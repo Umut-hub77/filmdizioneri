@@ -250,34 +250,88 @@ def render_scrollable_strip(title: str, items: list):
             </div>
             <div id="{container_id}" class="scroll-container">
     """
+    # --- YARDIMCI FONKSİYON: DOĞRUDAN HTML ENJEKSİYONU (IFRAME İPTAL EDİLDİ) ---
+def render_scrollable_strip(title: str, items: list):
+    if not items: return
+    import urllib.parse
+    
+    # iframe (components.html) YOK, doğrudan Streamlit DOM'una enjekte ediyoruz.
+    # Bu sayede mobil tarayıcılar sekmeye geri döndüğünüzde sistemi dondurmaz.
+    html_content = f"""
+    <style>
+        .strip-wrapper {{ margin-bottom: 40px; }}
+        .strip-header {{ margin-bottom: 15px; padding-left: 10px; border-left: 4px solid #E50914; }}
+        .strip-header h3 {{ margin: 0; font-size: 1.3rem; font-weight: 700; color: white; line-height: 1.2; }}
+        
+        .scroll-container {{ 
+            display: flex; overflow-x: auto; gap: 15px; padding-bottom: 15px;
+            /* Mobilde parmakla kaydırma çok pürüzsüz olur, masaüstü için ince şık bir çubuk ekliyoruz */
+        }}
+        .scroll-container::-webkit-scrollbar {{ height: 8px; }}
+        .scroll-container::-webkit-scrollbar-track {{ background: #141414; border-radius: 4px; }}
+        .scroll-container::-webkit-scrollbar-thumb {{ background: #333; border-radius: 4px; }}
+        .scroll-container::-webkit-scrollbar-thumb:hover {{ background: #E50914; }}
+        
+        .movie-card {{ flex: 0 0 140px; width: 140px; display: flex; flex-direction: column; }}
+        .poster-box {{ position: relative; width: 100%; height: 210px; border-radius: 6px; overflow: hidden; }}
+        .poster-img {{ width: 100%; height: 100%; object-fit: cover; transition: 0.3s; }}
+        
+        .hover-overlay {{
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px;
+            opacity: 0; transition: 0.3s;
+        }}
+        .poster-box:hover .poster-img {{ transform: scale(1.05); }}
+        .poster-box:hover .hover-overlay {{ opacity: 1; }}
+        
+        .action-btn {{ padding: 8px 15px; border-radius: 4px; color: white !important; text-decoration: none !important; font-size: 0.75rem; font-weight: bold; width: 70%; text-align: center; }}
+        .btn-red {{ background: #E50914; border: none; }}
+        .btn-dark {{ background: transparent; border: 1px solid white; }}
+        
+        .movie-title {{ color: #a0aec0 !important; text-decoration: none !important; font-size: 0.85rem; margin-top: 8px; text-align: center; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+        .movie-title:hover {{ color: white !important; }}
+        
+        @media (max-width: 600px) {{
+            .movie-card {{ flex: 0 0 120px; width: 120px; }}
+            .poster-box {{ height: 180px; }}
+        }}
+    </style>
+    
+    <div class="strip-wrapper">
+        <div class="strip-header">
+            <h3>{title}</h3>
+        </div>
+        <div class="scroll-container">
+    """
+    
     for row in items:
         baslik = row.get('title') or row.get('name')
         poster_path = row.get('poster_path')
+        if not poster_path: continue # Posteri olmayanları es geç
         
-        # 1. URL Çökmelerini Engelleme (Boşluk, özel karakter ve tırnakları güvenli web formatına çevirir)
         safe_baslik = urllib.parse.quote(baslik)
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         imdb_link = f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
-        
-        # 2. HTML Çökmelerini Engelleme (Film isminde çift/tek tırnak varsa siteyi bozmasını engeller)
         html_baslik = baslik.replace('"', '&quot;').replace("'", "&#39;")
         
         html_content += f"""
-        <div class="card">
-            <div class="poster-container">
-                <img src="{image_url}" class="poster">
-                <div class="overlay">
-                    <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="btn btn-izle">▶ İzle</a>
-                    <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="btn btn-imdb">IMDb</a>
+        <div class="movie-card">
+            <div class="poster-box">
+                <img src="{image_url}" class="poster-img">
+                <div class="hover-overlay">
+                    <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">▶ İZLE</a>
+                    <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
                 </div>
             </div>
-            <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="title-link" title="{html_baslik}">{html_baslik}</a>
+            <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="movie-title" title="{html_baslik}">{html_baslik}</a>
         </div>
         """
         
-    html_content += "</div></div></body></html>"
-    components.html(html_content, height=340, scrolling=False)
+    html_content += "</div></div>"
+    
+    # components.html iptal edildi. st.markdown ile doğrudan sayfanın içine yazdırıyoruz.
+    st.markdown(html_content, unsafe_allow_html=True)
         
 
 
