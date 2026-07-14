@@ -196,118 +196,48 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
 
 
 # --- YARDIMCI FONKSİYON: JAVASCRIPT DESTEKLİ HTML COMPONENT ŞERİDİ ---
-def render_scrollable_strip(title: str, items: list):
-    if not items: return
-    container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
-    
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap');
-        body {{ margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; color: white; background: transparent; }}
-        .wrapper {{ margin-bottom: 50px; }} 
-        .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 0 10px; }}
-        @media (max-width: 600px) {{
-            .header {{ flex-direction: column; align-items: flex-start; gap: 8px; }}
-            .header h3 {{ font-size: 1.1rem !important; margin: 0; }}
-        }}
-        .nav-btn {{ background: #141414; border: 1px solid #333; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; transition: 0.3s; }}
-        .nav-btn:hover {{ background: #E50914; border-color: #E50914; }}
-        .scroll-container {{ display: flex; overflow-x: auto; gap: 15px; padding: 5px 10px; scroll-behavior: smooth; -ms-overflow-style: none; scrollbar-width: none; }}
-        .scroll-container::-webkit-scrollbar {{ display: none; }}
-        .card {{ flex: 0 0 140px; width: 140px; max-width: 140px; display: flex; flex-direction: column; }}
-        .poster-container {{ position: relative; width: 100%; height: 210px; border-radius: 4px; overflow: hidden; }}
-        .poster {{ width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease; }}
-        .overlay {{
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.75); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px;
-            opacity: 0; transition: opacity 0.3s ease;
-        }}
-        .poster-container:hover .poster {{ transform: scale(1.05); }}
-        .poster-container:hover .overlay {{ opacity: 1; }}
-        .btn {{ padding: 6px 15px; border-radius: 4px; color: white; text-decoration: none; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }}
-        .btn-izle {{ background: #E50914; border: none; }}
-        .btn-imdb {{ background: transparent; border: 1px solid white; }}
-        .title-link {{ color: #a0aec0; text-decoration: none; font-size: 0.8rem; margin-top: 8px; display: block; text-align: center; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; transition: 0.3s; }}
-        .title-link:hover {{ color: white; }}
-        @media (max-width: 600px) {{
-            .card {{ flex: 0 0 120px; width: 120px; max-width: 120px; }}
-            .poster-container {{ height: 180px; }}
-        }}
-    </style>
-    </head>
-    <body>
-        <div class="wrapper">
-            <div class="header">
-                <h3 style="font-weight:700;">{title}</h3>
-                <div>
-                    <button class="nav-btn" onclick="document.getElementById('{container_id}').scrollBy({{left: -300, behavior: 'smooth'}})">&#10094;</button>
-                    <button class="nav-btn" onclick="document.getElementById('{container_id}').scrollBy({{left: 300, behavior: 'smooth'}})">&#10095;</button>
-                </div>
-            </div>
-            <div id="{container_id}" class="scroll-container">
-    """
-    # --- YARDIMCI FONKSİYON: DOĞRUDAN HTML ENJEKSİYONU (IFRAME İPTAL EDİLDİ) ---
+# --- YARDIMCI FONKSİYON: DOĞRUDAN HTML ENJEKSİYONU ---
 def render_scrollable_strip(title: str, items: list):
     if not items: return
     import urllib.parse
     
-    # iframe (components.html) YOK, doğrudan Streamlit DOM'una enjekte ediyoruz.
-    # Bu sayede mobil tarayıcılar sekmeye geri döndüğünüzde sistemi dondurmaz.
-    html_content = f"""
-    <style>
-        .strip-wrapper {{ margin-bottom: 40px; }}
-        .strip-header {{ margin-bottom: 15px; padding-left: 10px; border-left: 4px solid #E50914; }}
-        .strip-header h3 {{ margin: 0; font-size: 1.3rem; font-weight: 700; color: white; line-height: 1.2; }}
-        
-        .scroll-container {{ 
-            display: flex; overflow-x: auto; gap: 15px; padding-bottom: 15px;
-            /* Mobilde parmakla kaydırma çok pürüzsüz olur, masaüstü için ince şık bir çubuk ekliyoruz */
-        }}
-        .scroll-container::-webkit-scrollbar {{ height: 8px; }}
-        .scroll-container::-webkit-scrollbar-track {{ background: #141414; border-radius: 4px; }}
-        .scroll-container::-webkit-scrollbar-thumb {{ background: #333; border-radius: 4px; }}
-        .scroll-container::-webkit-scrollbar-thumb:hover {{ background: #E50914; }}
-        
-        .movie-card {{ flex: 0 0 140px; width: 140px; display: flex; flex-direction: column; }}
-        .poster-box {{ position: relative; width: 100%; height: 210px; border-radius: 6px; overflow: hidden; }}
-        .poster-img {{ width: 100%; height: 100%; object-fit: cover; transition: 0.3s; }}
-        
-        .hover-overlay {{
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px;
-            opacity: 0; transition: 0.3s;
-        }}
-        .poster-box:hover .poster-img {{ transform: scale(1.05); }}
-        .poster-box:hover .hover-overlay {{ opacity: 1; }}
-        
-        .action-btn {{ padding: 8px 15px; border-radius: 4px; color: white !important; text-decoration: none !important; font-size: 0.75rem; font-weight: bold; width: 70%; text-align: center; }}
-        .btn-red {{ background: #E50914; border: none; }}
-        .btn-dark {{ background: transparent; border: 1px solid white; }}
-        
-        .movie-title {{ color: #a0aec0 !important; text-decoration: none !important; font-size: 0.85rem; margin-top: 8px; text-align: center; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-        .movie-title:hover {{ color: white !important; }}
-        
-        @media (max-width: 600px) {{
-            .movie-card {{ flex: 0 0 120px; width: 120px; }}
-            .poster-box {{ height: 180px; }}
-        }}
-    </style>
-    
-    <div class="strip-wrapper">
-        <div class="strip-header">
-            <h3>{title}</h3>
-        </div>
-        <div class="scroll-container">
-    """
+    # DİKKAT: Markdown'ın bunu kod bloğu sanmaması için HTML kısımlarını en sola yasladık.
+    html_content = f"""<style>
+.strip-wrapper {{ margin-bottom: 40px; }}
+.strip-header {{ margin-bottom: 15px; padding-left: 10px; border-left: 4px solid #E50914; }}
+.strip-header h3 {{ margin: 0; font-size: 1.3rem; font-weight: 700; color: white; line-height: 1.2; }}
+.scroll-container {{ display: flex; overflow-x: auto; gap: 15px; padding-bottom: 15px; }}
+.scroll-container::-webkit-scrollbar {{ height: 8px; }}
+.scroll-container::-webkit-scrollbar-track {{ background: #141414; border-radius: 4px; }}
+.scroll-container::-webkit-scrollbar-thumb {{ background: #333; border-radius: 4px; }}
+.scroll-container::-webkit-scrollbar-thumb:hover {{ background: #E50914; }}
+.movie-card {{ flex: 0 0 140px; width: 140px; display: flex; flex-direction: column; }}
+.poster-box {{ position: relative; width: 100%; height: 210px; border-radius: 6px; overflow: hidden; }}
+.poster-img {{ width: 100%; height: 100%; object-fit: cover; transition: 0.3s; }}
+.hover-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; opacity: 0; transition: 0.3s; }}
+.poster-box:hover .poster-img {{ transform: scale(1.05); }}
+.poster-box:hover .hover-overlay {{ opacity: 1; }}
+.action-btn {{ padding: 8px 15px; border-radius: 4px; color: white !important; text-decoration: none !important; font-size: 0.75rem; font-weight: bold; width: 70%; text-align: center; }}
+.btn-red {{ background: #E50914; border: none; }}
+.btn-dark {{ background: transparent; border: 1px solid white; }}
+.movie-title {{ color: #a0aec0 !important; text-decoration: none !important; font-size: 0.85rem; margin-top: 8px; text-align: center; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.movie-title:hover {{ color: white !important; }}
+@media (max-width: 600px) {{
+    .movie-card {{ flex: 0 0 120px; width: 120px; }}
+    .poster-box {{ height: 180px; }}
+}}
+</style>
+<div class="strip-wrapper">
+    <div class="strip-header">
+        <h3>{title}</h3>
+    </div>
+    <div class="scroll-container">
+"""
     
     for row in items:
         baslik = row.get('title') or row.get('name')
         poster_path = row.get('poster_path')
-        if not poster_path: continue # Posteri olmayanları es geç
+        if not poster_path: continue
         
         safe_baslik = urllib.parse.quote(baslik)
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
@@ -315,22 +245,20 @@ def render_scrollable_strip(title: str, items: list):
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
         html_baslik = baslik.replace('"', '&quot;').replace("'", "&#39;")
         
-        html_content += f"""
-        <div class="movie-card">
-            <div class="poster-box">
-                <img src="{image_url}" class="poster-img">
-                <div class="hover-overlay">
-                    <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">▶ İZLE</a>
-                    <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
-                </div>
-            </div>
-            <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="movie-title" title="{html_baslik}">{html_baslik}</a>
+        # Yine aynı şekilde boşlukları sıfırladık:
+        html_content += f"""<div class="movie-card">
+    <div class="poster-box">
+        <img src="{image_url}" class="poster-img">
+        <div class="hover-overlay">
+            <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">▶ İZLE</a>
+            <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
         </div>
-        """
+    </div>
+    <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="movie-title" title="{html_baslik}">{html_baslik}</a>
+</div>
+"""
         
     html_content += "</div></div>"
-    
-    # components.html iptal edildi. st.markdown ile doğrudan sayfanın içine yazdırıyoruz.
     st.markdown(html_content, unsafe_allow_html=True)
         
 
