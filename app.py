@@ -195,9 +195,7 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
     return None
 
 
-# --- YARDIMCI FONKSİYON: JAVASCRIPT DESTEKLİ HTML COMPONENT ŞERİDİ ---
-# --- YARDIMCI FONKSİYON: DOĞRUDAN HTML ENJEKSİYONU ---
-# --- YARDIMCI FONKSİYON: JAVASCRIPT DESTEKLİ OKLU KAYDIRMA ŞERİDİ ---
+
 def render_scrollable_strip(title: str, items: list):
     if not items: return
     import urllib.parse
@@ -205,29 +203,44 @@ def render_scrollable_strip(title: str, items: list):
     
     container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
     
-    html_content = f"""
+html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap');
-        body {{ font-family: 'Montserrat', sans-serif; background: transparent; overflow: hidden; }}
-        .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-left: 10px; border-left: 4px solid #E50914; }}
+        body {{ margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; background: transparent; overflow: hidden; }}
+        
+        /* BAŞLIK KISMI: BEYAZ ARKA PLAN VE KOYU YAZI */
+        .header {{ 
+            display: flex; justify-content: space-between; align-items: center; 
+            margin-bottom: 15px; padding: 10px 15px; 
+            background-color: white; border-radius: 8px; /* Beyaz kutu */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+        }}
+        .header h3 {{ margin: 0; font-size: 1.2rem; font-weight: 700; color: #141414; }} /* Başlık siyah */
+        
+        /* OK BUTONLARI */
+        .nav-buttons {{ display: flex; gap: 8px; }}
+        .nav-btn {{ 
+            background: #141414; border: none; color: white; width: 30px; height: 30px; 
+            border-radius: 50%; cursor: pointer; transition: 0.3s; 
+        }}
+        .nav-btn:hover {{ background: #E50914; }}
+        
+        /* AFİŞLER VE DİĞERLERİ */
         .scroll-container {{ display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; scrollbar-width: none; }}
         .scroll-container::-webkit-scrollbar {{ display: none; }}
         .movie-card {{ flex: 0 0 140px; width: 140px; display: flex; flex-direction: column; }}
         .poster-box {{ position: relative; width: 100%; height: 210px; border-radius: 6px; overflow: hidden; cursor: pointer; }}
         .poster-img {{ width: 100%; height: 100%; object-fit: cover; transition: 0.3s; }}
         
-        /* Mobilde ilk dokunuşta görünecek overlay */
         .hover-overlay {{ 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.85); display: flex; flex-direction: column; 
             justify-content: center; align-items: center; gap: 10px; 
             opacity: 0; pointer-events: none; transition: 0.3s; 
         }}
-        
-        /* Dokunulduğunda tetiklenecek sınıf */
         .show-overlay {{ opacity: 1 !important; pointer-events: auto !important; }}
         
         .action-btn {{ padding: 8px 15px; border-radius: 4px; color: white !important; text-decoration: none !important; font-size: 0.75rem; font-weight: bold; width: 80%; text-align: center; }}
@@ -235,6 +248,8 @@ def render_scrollable_strip(title: str, items: list):
         .btn-dark {{ background: transparent; border: 1px solid white; }}
     </style>
     </head>
+    ... (Gerisi aynı kalacak)
+"""
     <body>
         <div class="header">
             <h3>{title}</h3>
