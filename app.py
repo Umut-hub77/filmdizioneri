@@ -6,7 +6,7 @@ import difflib
 import re
 import random
 from pathlib import Path
-
+import urllib.parse
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Yayın Rehberi", page_icon="🍿", layout="wide")
 TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
@@ -253,24 +253,26 @@ def render_scrollable_strip(title: str, items: list):
     for row in items:
         baslik = row.get('title') or row.get('name')
         poster_path = row.get('poster_path')
-        watch_link = f"https://www.justwatch.com/tr/ara?q={baslik.replace(' ', '%20')}"
-        imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
+        
+        # 1. URL Çökmelerini Engelleme (Boşluk, özel karakter ve tırnakları güvenli web formatına çevirir)
+        safe_baslik = urllib.parse.quote(baslik)
+        watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
+        imdb_link = f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
         
-        # Olası tırnak işareti (Örn: Schindler's List) hatalarını engellemek için:
-        safe_watch = watch_link.replace("'", "%27")
-        safe_imdb = imdb_link.replace("'", "%27")
+        # 2. HTML Çökmelerini Engelleme (Film isminde çift/tek tırnak varsa siteyi bozmasını engeller)
+        html_baslik = baslik.replace('"', '&quot;').replace("'", "&#39;")
         
         html_content += f"""
         <div class="card">
             <div class="poster-container">
                 <img src="{image_url}" class="poster">
                 <div class="overlay">
-                    <a href="javascript:void(0);" onclick="window.open('{safe_watch}', '_blank', 'noopener,noreferrer');" class="btn btn-izle">▶ İzle</a>
-                    <a href="javascript:void(0);" onclick="window.open('{safe_imdb}', '_blank', 'noopener,noreferrer');" class="btn btn-imdb">IMDb</a>
+                    <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="btn btn-izle">▶ İzle</a>
+                    <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="btn btn-imdb">IMDb</a>
                 </div>
             </div>
-            <a href="javascript:void(0);" onclick="window.open('{safe_watch}', '_blank', 'noopener,noreferrer');" class="title-link" title="{baslik}">{baslik}</a>
+            <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="title-link" title="{html_baslik}">{html_baslik}</a>
         </div>
         """
         
