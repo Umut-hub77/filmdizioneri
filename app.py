@@ -248,8 +248,6 @@ html_content = f"""
         .btn-dark {{ background: transparent; border: 1px solid white; }}
     </style>
     </head>
-    ... (Gerisi aynı kalacak)
-"""
     <body>
         <div class="header">
             <h3>{title}</h3>
