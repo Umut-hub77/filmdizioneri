@@ -278,8 +278,7 @@ def render_scrollable_strip(title: str, items: list):
     components.html(html_content, height=340, scrolling=False)
         
 
-    html_content += "</div></div></body></html>"
-    components.html(html_content, height=340, scrolling=False)
+
 
 
 # ==========================================
