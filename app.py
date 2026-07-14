@@ -306,7 +306,15 @@ st.markdown('<p class="sub-title">İzleyecek bir şeyler bulun, hikaye ve atmosf
 df_all = load_imdb_data()
 
 # Emojiler kaldırıldı, menü sağ üste hizalandı (CSS ile)
-secim = st.radio("Menü", ["Film", "Dizi", "Belgesel", "Ne İzlesem?"], horizontal=True, label_visibility="collapsed")
+# --- Eski st.radio yerine Tab yapısı ---
+tab1, tab2, tab3, tab4 = st.tabs(["🎥 FİLM", "📺 DİZİ", "📄 BELGESEL", "🎲 NE İZLESEM?"])
+
+# Kullanıcı hangi sekmeye tıkladıysa ona göre 'secim' değişkenini atıyoruz
+if tab1: secim = "Film"
+elif tab2: secim = "Dizi"
+elif tab3: secim = "Belgesel"
+else: secim = "Ne İzlesem?"
+
 media_type = 'tv' if secim == "Dizi" else 'movie'
 
 # ==========================================
