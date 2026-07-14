@@ -182,10 +182,10 @@ def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movi
     except: pass
     return None
 
-@st.cache_data(ttl=60) # Önbelleği kısa süreli tutuyoruz ki her seferinde taze veri çeksin
+@st.cache_data(ttl=20) # Önbelleği kısa süreli tutuyoruz ki her seferinde taze veri çeksin
 def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
     # Rastgele sayfayı 1 ile 20 arası (yaklaşık 400 sonuç) genişletiyoruz
-    random_page = random.randint(1, 20)
+    random_page = random.randint(1, 50)
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
     params = {
         'api_key': api_key, 
