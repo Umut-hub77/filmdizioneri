@@ -182,16 +182,28 @@ def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movi
     except: pass
     return None
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60) # Önbelleği kısa süreli tutuyoruz ki her seferinde taze veri çeksin
 def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
-    random_page = random.randint(1, 5)
+    # Rastgele sayfayı 1 ile 20 arası (yaklaşık 400 sonuç) genişletiyoruz
+    random_page = random.randint(1, 20)
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
-    params = {'api_key': api_key, 'with_genres': genre_id, 'language': 'tr-TR', 'page': random_page, 'vote_average.gte': 6.5}
+    params = {
+        'api_key': api_key, 
+        'with_genres': genre_id, 
+        'language': 'tr-TR', 
+        'page': random_page, 
+        'vote_average.gte': 6.0,
+        'sort_by': 'popularity.desc' # Değişkenlik için sıralama yöntemini değiştirebiliriz
+    }
     try:
         resp = requests.get(url, params=params).json()
         results = [i for i in resp.get('results', []) if i.get('poster_path')]
-        if results: return random.choice(results)
-    except: pass
+        
+        # Seçim havuzunu genişletmek için daha fazla sonuç alıyoruz
+        if results: 
+            return random.choice(results)
+    except: 
+        pass
     return None
 
 
