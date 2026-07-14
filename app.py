@@ -8,7 +8,7 @@ import random
 from pathlib import Path
 import urllib.parse
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Yayın Rehberi", page_icon="🍿", layout="wide")
+st.set_page_config(page_title="Seyir Rehberi", page_icon="🍿", layout="wide")
 TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 
 # ==========================================
