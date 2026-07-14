@@ -64,35 +64,35 @@ gap: 10px !important;
 }
 
 /* 3. Butonları Eşit Başlıklar Haline Getirme */
-div[role="radiogroup"] > label {
-flex: 1; /* Tüm butonları milimetrik olarak eşit genişliğe zorlar */
-text-align: center;
-justify-content: center;
-background: transparent !important;
-border: none !important;
-padding: 10px 0;
-cursor: pointer;
-box-shadow: none !important;
+/* Radio butonlarını buton gibi göstermek için CSS */
+div[role="radiogroup"] {
+    display: flex !important;
+    gap: 10px !important;
 }
-div[role="radiogroup"] label [data-baseweb="radio"] { display: none !important; }
-div[role="radiogroup"] label > div:first-child { display: none !important; }
 
-div[role="radiogroup"] > label div[data-testid="stMarkdownContainer"] p {
-font-weight: 700;
-font-size: 1.05rem;
-letter-spacing: 1px;
-text-transform: uppercase;
-color: #a0aec0;
-transition: 0.3s ease;
-white-space: nowrap !important;
-margin: 0;
+div[role="radiogroup"] > label {
+    background-color: #1a1a1a !important; /* Koyu arka plan */
+    border: 1px solid #333 !important;
+    border-radius: 8px !important;
+    padding: 10px 20px !important;
+    transition: all 0.3s ease !important;
+    cursor: pointer !important;
 }
-div[role="radiogroup"] > label:hover div[data-testid="stMarkdownContainer"] p {
-color: #ffffff;
+
+/* Yuvarlak kutucukları tamamen gizle */
+div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
+    color: #ffffff !important;
+    margin: 0 !important;
 }
-div[role="radiogroup"] label[data-checked="true"] div[data-testid="stMarkdownContainer"] p {
-color: #E50914 !important;
+
+/* Seçili butonun rengi */
+div[role="radiogroup"] label[data-checked="true"] {
+    background-color: #E50914 !important;
+    border-color: #E50914 !important;
 }
+
+/* Radyo butonunun kendi yuvarlağını yok et */
+div[data-baseweb="radio"] { display: none !important; }
 
 /* Arama Çubuğu */
 .stTextInput > div > div > input { font-size: 1.1rem !important; padding: 12px 20px !important; }
