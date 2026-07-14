@@ -250,12 +250,20 @@ def render_scrollable_strip(title: str, items: list):
             </div>
             <div id="{container_id}" class="scroll-container">
     """
-    html_content += f"""
+for row in items:
+        # Eğer bu satırlar silinirse NameError hatası alırsın
+        baslik = row.get('title') or row.get('name')
+        poster_path = row.get('poster_path')
+        watch_link = f"https://www.justwatch.com/tr/ara?q={baslik.replace(' ', '%20')}"
+        imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
+        image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
+        
+        # HTML kısmı (noopener düzeltmeleriyle birlikte)
+        html_content += f"""
         <div class="card">
             <div class="poster-container">
                 <img src="{image_url}" class="poster">
                 <div class="overlay">
-                    <!-- rel="noopener noreferrer" eklendi -->
                     <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="btn btn-izle">▶ İzle</a>
                     <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="btn btn-imdb">IMDb</a>
                 </div>
@@ -315,8 +323,9 @@ if secim == "Ne İzlesem?":
                     st.markdown(f"<p style='line-height:1.6; color:#a0aec0;'>{ozet}</p>", unsafe_allow_html=True)
                     st.markdown(f"""
                     <div style="display:flex; gap:15px; margin-top:20px;">
-                        <a href="{watch_link}" target="_blank" style="background-color:#E50914; color:white; padding:12px 30px; text-decoration:none; border-radius:4px; font-weight:700; font-size:1rem; text-transform:uppercase;">Şimdi İzle</a>
-                        <a href="{imdb_link}" target="_blank" style="background-color:transparent; border: 1px solid white; color:white; padding:12px 30px; text-decoration:none; border-radius:4px; font-weight:700; font-size:1rem; text-transform:uppercase;">IMDb</a>
+                        <!-- rel="noopener noreferrer" eklendi -->
+                        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" style="background-color:#E50914; color:white; padding:12px 30px; text-decoration:none; border-radius:4px; font-weight:700; font-size:1rem; text-transform:uppercase;">Şimdi İzle</a>
+                        <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" style="background-color:transparent; border: 1px solid white; color:white; padding:12px 30px; text-decoration:none; border-radius:4px; font-weight:700; font-size:1rem; text-transform:uppercase;">IMDb</a>
                     </div>
                     """, unsafe_allow_html=True)
             else:
