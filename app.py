@@ -55,44 +55,41 @@ padding-bottom: 15px;
 border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 width: 100%;
 }
-div[role="radiogroup"] {
-display: flex;
-width: 100%;
-max-width: 800px; /* Alanı genişlettik ki yazılar sıkışmasın */
-justify-content: space-between;
-gap: 10px !important;
+/* 1. Yuvarlakları (Radio) tamamen gizle */
+div[role="radiogroup"] label input[type="radio"] {
+    display: none !important;
 }
 
-/* 3. Butonları Eşit Başlıklar Haline Getirme */
-/* Radio butonlarını buton gibi göstermek için CSS */
+/* 2. Butonları buton gibi göstermek için temel yapı */
 div[role="radiogroup"] {
     display: flex !important;
-    gap: 10px !important;
+    flex-wrap: nowrap !important; /* Alt satıra geçmeyi engeller */
+    gap: 15px !important;
 }
 
 div[role="radiogroup"] > label {
-    background-color: #1a1a1a !important; /* Koyu arka plan */
+    background-color: #1a1a1a !important;
     border: 1px solid #333 !important;
     border-radius: 8px !important;
-    padding: 10px 20px !important;
-    transition: all 0.3s ease !important;
+    padding: 10px 25px !important;
     cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
-/* Yuvarlak kutucukları tamamen gizle */
-div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
-    color: #ffffff !important;
-    margin: 0 !important;
-}
-
-/* Seçili butonun rengi */
+/* 3. Seçili buton stili */
 div[role="radiogroup"] label[data-checked="true"] {
     background-color: #E50914 !important;
     border-color: #E50914 !important;
 }
 
-/* Radyo butonunun kendi yuvarlağını yok et */
-div[data-baseweb="radio"] { display: none !important; }
+/* 4. "Format:" yazısının kırılmasını engellemek için */
+div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
+    white-space: nowrap !important;
+    margin-right: 20px !important;
+}
 
 /* Arama Çubuğu */
 .stTextInput > div > div > input { font-size: 1.1rem !important; padding: 12px 20px !important; }
