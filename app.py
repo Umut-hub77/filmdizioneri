@@ -251,24 +251,31 @@ def render_scrollable_strip(title: str, items: list):
             <div id="{container_id}" class="scroll-container">
     """
     for row in items:
-            baslik = row.get('title') or row.get('name')
-            poster_path = row.get('poster_path')
-            watch_link = f"https://www.justwatch.com/tr/ara?q={baslik.replace(' ', '%20')}"
-            imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
-            image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
+        baslik = row.get('title') or row.get('name')
+        poster_path = row.get('poster_path')
+        watch_link = f"https://www.justwatch.com/tr/ara?q={baslik.replace(' ', '%20')}"
+        imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
+        image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
         
-            html_content += f"""
-            <div class="card">
-                <div class="poster-container">
-                    <img src="{image_url}" class="poster">
-                    <div class="overlay">
-                        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="btn btn-izle">▶ İzle</a>
-                        <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="btn btn-imdb">IMDb</a>
-                    </div>
+        # Olası tırnak işareti (Örn: Schindler's List) hatalarını engellemek için:
+        safe_watch = watch_link.replace("'", "%27")
+        safe_imdb = imdb_link.replace("'", "%27")
+        
+        html_content += f"""
+        <div class="card">
+            <div class="poster-container">
+                <img src="{image_url}" class="poster">
+                <div class="overlay">
+                    <a href="javascript:void(0);" onclick="window.open('{safe_watch}', '_blank', 'noopener,noreferrer');" class="btn btn-izle">▶ İzle</a>
+                    <a href="javascript:void(0);" onclick="window.open('{safe_imdb}', '_blank', 'noopener,noreferrer');" class="btn btn-imdb">IMDb</a>
                 </div>
-                <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="title-link" title="{baslik}">{baslik}</a>
             </div>
-            """
+            <a href="javascript:void(0);" onclick="window.open('{safe_watch}', '_blank', 'noopener,noreferrer');" class="title-link" title="{baslik}">{baslik}</a>
+        </div>
+        """
+        
+    html_content += "</div></div></body></html>"
+    components.html(html_content, height=340, scrolling=False)
         
 
     html_content += "</div></div></body></html>"
