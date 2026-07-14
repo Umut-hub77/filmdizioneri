@@ -16,7 +16,7 @@ pip install -r requirements.txt
 3. Çalıştırın:
 
 ```bash
-python oneri_bot.py
+python app.py
 ```
 
 Program sizden izlediğiniz filmin başlığını isteyecek. Eğer `OMDB_API_KEY` tanımlıysa OMDb üzerinden eşleşme aranır; bulunamazsa yerel veri kümesinde benzer başlık aranır.
