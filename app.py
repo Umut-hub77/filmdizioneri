@@ -271,7 +271,7 @@ for row in items:
             <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="title-link" title="{baslik}">{baslik}</a>
         </div>
         """
-    html_content += "</div></div></body></html>"
+    html_content += "</div></body></html>"
     components.html(html_content, height=340, scrolling=False)
 
 
