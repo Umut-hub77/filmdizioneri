@@ -192,8 +192,7 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
         'with_genres': genre_id, 
         'language': 'tr-TR', 
         'page': random_page, 
-        'vote_average.gte': 6.0,
-        'sort_by': 'popularity.desc' # Değişkenlik için sıralama yöntemini değiştirebiliriz
+        'vote_average.gte': 6.0 
     }
     try:
         resp = requests.get(url, params=params).json()
