@@ -251,14 +251,12 @@ def render_scrollable_strip(title: str, items: list):
             <div id="{container_id}" class="scroll-container">
     """
 for row in items:
-        # Eğer bu satırlar silinirse NameError hatası alırsın
         baslik = row.get('title') or row.get('name')
         poster_path = row.get('poster_path')
         watch_link = f"https://www.justwatch.com/tr/ara?q={baslik.replace(' ', '%20')}"
         imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
         
-        # HTML kısmı (noopener düzeltmeleriyle birlikte)
         html_content += f"""
         <div class="card">
             <div class="poster-container">
@@ -271,8 +269,10 @@ for row in items:
             <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="title-link" title="{baslik}">{baslik}</a>
         </div>
         """
-    html_content += "</div></body></html>"
-    components.html(html_content, height=340, scrolling=False)
+        
+
+html_content += "</div></div></body></html>"
+components.html(html_content, height=340, scrolling=False)
 
 
 # ==========================================
