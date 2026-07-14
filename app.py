@@ -189,7 +189,8 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
         'with_genres': genre_id, 
         'language': 'tr-TR', 
         'page': random_page, 
-        'vote_average.gte': 6.0 
+        'vote_average.gte': 6.0, 
+        'sort_by' : 'desc'
     }
     try:
         resp = requests.get(url, params=params).json()
