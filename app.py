@@ -259,31 +259,31 @@ html_content = f"""
         <div id="{container_id}" class="scroll-container">
     """
     
-for row in items:
-    baslik = row.get('title') or row.get('name')
-    poster_path = row.get('poster_path')
-    if not poster_path: continue
+    for row in items:
+        baslik = row.get('title') or row.get('name')
+        poster_path = row.get('poster_path')
+        if not poster_path: continue
         
-    safe_baslik = urllib.parse.quote(baslik)
-    watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
-    imdb_link = f"https://www.imdb.com/find?q={safe_baslik}"
-    image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
+        safe_baslik = urllib.parse.quote(baslik)
+        watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
+        imdb_link = f"https://www.imdb.com/find?q={safe_baslik}"
+        image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
         
-    html_content += f"""
-    <div class="movie-card">
-        <!-- onclick ile dokunulduğunda overlay'i gösteren JS fonksiyonu -->
-        <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
-            <img src="{image_url}" class="poster-img">
-            <div class="hover-overlay">
-                <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">▶ İZLE</a>
-                <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
+        html_content += f"""
+        <div class="movie-card">
+            <!-- onclick ile dokunulduğunda overlay'i gösteren JS fonksiyonu -->
+            <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
+                <img src="{image_url}" class="poster-img">
+                <div class="hover-overlay">
+                    <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">▶ İZLE</a>
+                    <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
+                </div>
             </div>
         </div>
-    </div>
-    """
+        """
         
-html_content += "</div></body></html>"
-components.html(html_content, height=330, scrolling=False)
+    html_content += "</div></body></html>"
+    components.html(html_content, height=330, scrolling=False)
         
 
 
