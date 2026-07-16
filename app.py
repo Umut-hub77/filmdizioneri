@@ -14,119 +14,66 @@ TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 
 st.markdown("""
 <style>
-/* 1. Resmi ve Kurumsal Font Yüklemesi */
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;700&display=swap');
+/* --- PREMIUM KONTROL PANELİ CSS (Netflix/BluTV Tarzı) --- */
 
-html, body, [class*="css"] {
-font-family: 'Montserrat', sans-serif !important;
-}
-
-.block-container { padding-top: 2rem; max-width: 1300px; }
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-
-/* Streamlit animasyonlarını gizle */
-div[data-testid="stStatusWidget"], div[data-testid="stSpinner"], .stSpinner {
-display: none !important; visibility: hidden !important;
-}
-
-/* Başlık Tasarımları */
-.main-title {
-font-size: 3.5rem; font-weight: 900; text-align: left;
-background: linear-gradient(to right, #ffffff, #a0aec0);
--webkit-background-clip: text; -webkit-text-fill-color: transparent;
-margin-bottom: 0; padding-bottom: 0; letter-spacing: -1px;
-}
-.sub-title {
-text-align: left; color: #a0aec0; font-size: 1.1rem;
-margin-top: 5px; margin-bottom: 30px; font-weight: 400;
-}
-
-/* 2. Üst Menü Konumlandırması (Tam Ortalanmış ve Eşit Dağıtılmış) */
-div[data-testid="stRadio"] {
-display: flex;
-justify-content: center; /* Menüyü sayfanın tam ortasına hizalar */
-margin-top: 20px;
-margin-bottom: 30px;
-padding-bottom: 15px;
-border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-width: 100%;
-}
-/* 1. Yuvarlakları (Radio) tamamen gizle */
-/* 1. Üst Menü Taşıyıcısı (Mobil Uyumlu) */
-div[role="radiogroup"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important; /* Yazıların alt satıra inmesini kesinlikle engeller */
-    justify-content: space-around !important;
-    gap: 10px !important;
-    width: 100% !important;
-    overflow-x: auto !important; /* Ekrana sığmazsa mobilde yana kaydırılabilir yapar */
-    padding-bottom: 5px !important; 
-    scrollbar-width: none; /* Firefox için scrollbar gizleme */
-}
-div[role="radiogroup"]::-webkit-scrollbar { 
-    display: none; /* Chrome/Safari için scrollbar gizleme */
-}
-
-/* 2. Radyo Yuvarlaklarını Gizle */
-div[role="radiogroup"] label input[type="radio"],
-div[data-baseweb="radio"] {
-    display: none !important;
-}
-
-/* 3. Menü Başlıkları (Çerçevesiz Temel Yapı) */
-div[role="radiogroup"] > label {
-    background: transparent !important;
-    border: none !important;
-    padding: 10px 5px !important;
-    cursor: pointer !important;
+/* 1. AÇILIR MENÜ (SELECTBOX) TASARIMI */
+div[data-baseweb="select"] > div {
+    background-color: #1a1a1a !important;
+    border: 1px solid #333 !important;
+    border-radius: 8px !important;
+    padding: 6px !important;
+    color: white !important;
     transition: all 0.3s ease !important;
-    border-bottom: 2px solid transparent !important; /* Başlangıçta görünmez alt çizgi */
-    border-radius: 0 !important; /* Kutu görünümünü sıfırla */
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+    cursor: pointer !important;
 }
-
-/* 4. Yazı Stili (Sönük Hal) */
-div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
-    color: #8c8c8c !important; /* Başlangıçta sönük gri */
-    font-weight: 600 !important;
+div[data-baseweb="select"] > div:hover,
+div[data-baseweb="select"] > div:focus-within {
+    border-color: #E50914 !important;
+    box-shadow: 0 0 10px rgba(229, 9, 20, 0.2) !important;
+}
+/* Selectbox İçindeki Yazılar */
+div[data-baseweb="select"] span {
     font-size: 1.1rem !important;
-    margin: 0 !important;
-    white-space: nowrap !important; /* Yazıların asla bölünmemesini sağlar */
-    transition: color 0.3s ease !important;
+    font-weight: 500 !important;
+    color: #ffffff !important;
+}
+/* Açılır Menü Listesi (Aşağı sarkan kısım) */
+ul[data-baseweb="menu"] {
+    background-color: #1a1a1a !important;
+    border: 1px solid #333 !important;
+    border-radius: 8px !important;
+}
+ul[data-baseweb="menu"] li {
+    color: #ffffff !important;
+    transition: background 0.2s !important;
+}
+ul[data-baseweb="menu"] li:hover {
+    background-color: #E50914 !important;
 }
 
-/* 5. Hover (Üstüne Gelince Biraz Aydınlanma) */
-div[role="radiogroup"] > label:hover div[data-testid="stMarkdownContainer"] p {
-    color: #d1d1d1 !important;
+/* 2. ANA BUTON ("ÖNERİ GETİR") TASARIMI */
+button[kind="secondary"] {
+    background: linear-gradient(135deg, #E50914 0%, #b30000 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+    padding: 20px 0 !important;
+    border-radius: 8px !important;
+    font-size: 1.3rem !important;
+    font-weight: 900 !important;
+    letter-spacing: 1.5px !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 6px 15px rgba(229, 9, 20, 0.3) !important;
 }
-
-/* 6. Aktif / Seçili Durum (Tam Beyaz Yazı ve Alt Çizgi) */
-div[role="radiogroup"] label[data-checked="true"] {
-    border-bottom: 2px solid #ffffff !important; /* Altına beyaz çizgi */
+button[kind="secondary"] p {
+    font-size: 1.3rem !important; /* İçindeki metni büyütür */
 }
-div[role="radiogroup"] label[data-checked="true"] div[data-testid="stMarkdownContainer"] p {
-    color: #ffffff !important; /* Seçiliyken tam aydınlık beyaz */
+button[kind="secondary"]:hover {
+    transform: scale(1.02) !important; /* Üzerine gelince hafif büyür */
+    box-shadow: 0 8px 25px rgba(229, 9, 20, 0.5) !important;
+    background: linear-gradient(135deg, #f40612 0%, #cc0000 100%) !important;
 }
-
-/* "Format:" yazısının kırılmasını engellemek için */
-div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
-    white-space: nowrap !important;
-    margin-right: 15px !important;
-}
-
-/* Arama Çubuğu */
-.stTextInput > div > div > input { font-size: 1.1rem !important; padding: 12px 20px !important; }
-div[data-baseweb="input"] {
-border-radius: 8px !important; border: 1px solid #333 !important;
-background-color: #141414 !important; transition: all 0.3s ease;
-}
-div[data-baseweb="input"]:focus-within {
-border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important;
+button[kind="secondary"]:active {
+    transform: scale(0.98) !important; /* Tıklanma animasyonu */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -385,72 +332,80 @@ secim = st.radio("Menü", ["Film", "Dizi", "Belgesel", "Ne İzlesem?"], horizont
 media_type = 'tv' if secim == "Dizi" else 'movie'
 
 
+# ==========================================
+# 2. "NE İZLESEM?" SEKMESİ
+# ==========================================
 if secim == "Ne İzlesem?":
-    st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
-    st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
+    st.markdown("<h2 style='font-weight: 900; font-size: 2.5rem; letter-spacing: -1px; margin-bottom: 0;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #a0aec0; font-size: 1.1rem; margin-bottom: 30px;'>Türü seçin, arşivimizi tarayıp size en iyi yapımı önerelim.</p>", unsafe_allow_html=True)
 
-    tur_tipi = st.radio("Format:", ["Film", "Dizi"], horizontal=True)
-    m_type = "movie" if tur_tipi == "Film" else "tv"
+    # Menüleri yan yana daha profesyonel bir düzene sokuyoruz
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown("<p style='margin-bottom: 5px; color: #8c8c8c; font-weight: 600; font-size: 0.9rem;'>FORMAT</p>", unsafe_allow_html=True)
+        # label_visibility="collapsed" ile o çirkin "Format:" yazısını gizledik
+        tur_tipi = st.radio("Format:", ["Film", "Dizi"], horizontal=True, label_visibility="collapsed")
+        m_type = "movie" if tur_tipi == "Film" else "tv"
 
-    genres = get_tmdb_genres(TMDB_API_KEY, m_type)
-    genre_dict = {g['name']: str(g['id']) for g in genres}
-    selected_genre_name = st.selectbox("Tür Tercihiniz:", list(genre_dict.keys()))
+    with col2:
+        st.markdown("<p style='margin-bottom: 5px; color: #8c8c8c; font-weight: 600; font-size: 0.9rem;'>TÜR TERCİHİ</p>", unsafe_allow_html=True)
+        genres = get_tmdb_genres(TMDB_API_KEY, m_type)
+        genre_dict = {g['name']: str(g['id']) for g in genres}
+        selected_genre_name = st.selectbox("Tür Tercihiniz:", list(genre_dict.keys()), label_visibility="collapsed")
 
-    if st.button("ÖNERİ GETİR", use_container_width=True):
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Eğer daha önce görmediyse session_state'i başlat
+    if 'gosterilen_film_ids' not in st.session_state:
+        st.session_state.gosterilen_film_ids = []
+
+    # Netflix tarzı buton aksiyonu
+    if st.button("🎬 BANA BİR ÖNERİ GETİR", use_container_width=True):
         with st.spinner("Arşiv taranıyor..."):
-            chosen = get_random_recommendation(genre_dict[selected_genre_name], m_type, TMDB_API_KEY)
-            if chosen:
-                st.markdown("<hr style='border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
-                baslik = chosen.get('title') or chosen.get('name')
-                ozet = chosen.get('overview') or 'Bu yapım için özet bulunmamaktadır.'
-                puan = round(chosen.get('vote_average', 0), 1)
-                yil = (chosen.get('release_date') or chosen.get('first_air_date') or '?')[:4]
-                poster_url = f"https://image.tmdb.org/t/p/w500{chosen.get('poster_path')}"
+            for _ in range(5):
+                chosen = get_random_recommendation(genre_dict[selected_genre_name], m_type, TMDB_API_KEY)
                 
-                # Yeni tt kimlik entegrasyonu
-                tmdb_id = chosen.get('id')
-                imdb_id = get_imdb_id(tmdb_id, m_type)
-                
-                watch_link = f"https://www.justwatch.com/tr/ara?q={baslik.replace(' ', '%20')}"
-                
-                if imdb_id:
-                    imdb_link = f"https://www.imdb.com/title/{imdb_id}/"
-                else:
-                    imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
-                col1, col2 = st.columns([1, 2.5])
-                with col1:
-                    st.image(poster_url, use_column_width=True, clamp=True)
-                with col2:
-                    st.markdown(f"<h1 style='font-weight:700;'>{baslik} ({yil})</h1>", unsafe_allow_html=True)
-                    st.markdown(f"**TMDb Puanı:** `{puan} / 10`")
-                    st.markdown(f"<p style='line-height:1.6; color:#a0aec0;'>{ozet}</p>", unsafe_allow_html=True)
-                    st.markdown(f"""
-                    <div style="display:flex; gap:15px; margin-top:20px;">
-                    <!-- rel="noopener noreferrer" eklendi -->
-                    <a href="{watch_link}" target="_blank" rel="noopener noreferrer" style="background-color:#E50914; color:white; padding:12px 30px; text-decoration:none; border-radius:4px; font-weight:700; font-size:1rem; text-transform:uppercase;">Şimdi İzle</a>
-                    <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" style="background-color:transparent; border: 1px solid white; color:white; padding:12px 30px; text-decoration:none; border-radius:4px; font-weight:700; font-size:1rem; text-transform:uppercase;">IMDb</a>
-                    </div>
-                    """, unsafe_allow_html=True)
+                if chosen and chosen['id'] not in st.session_state.gosterilen_film_ids:
+                    st.session_state.gosterilen_film_ids.append(chosen['id'])
+                    
+                    st.markdown("<hr style='border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+                    baslik = chosen.get('title') or chosen.get('name')
+                    ozet = chosen.get('overview') or 'Bu yapım için özet bulunmamaktadır.'
+                    puan = round(chosen.get('vote_average', 0), 1)
+                    tarih = chosen.get('release_date') or chosen.get('first_air_date') or '?'
+                    yil = tarih[:4]
+                    poster_url = f"https://image.tmdb.org/t/p/w500{chosen.get('poster_path')}"
+                    
+                    tmdb_id = chosen.get('id')
+                    imdb_id = get_imdb_id(tmdb_id, m_type)
+                    
+                    watch_link = f"https://www.justwatch.com/tr/ara?q={urllib.parse.quote(baslik)}"
+                    
+                    if imdb_id:
+                        imdb_link = f"https://www.imdb.com/title/{imdb_id}/"
+                    else:
+                        imdb_link = f"https://duckduckgo.com/?q=!imdb+{urllib.parse.quote(f'{baslik} {yil}'.strip())}"
+
+                    resim_kolonu, yazi_kolonu = st.columns([1, 2.5])
+                    with resim_kolonu:
+                        st.image(poster_url, use_column_width=True, clamp=True)
+                    with yazi_kolonu:
+                        st.markdown(f"<h1 style='font-weight:900; letter-spacing:-1px;'>{baslik} ({yil})</h1>", unsafe_allow_html=True)
+                        st.markdown(f"**TMDb Puanı:** ⭐ `{puan} / 10`")
+                        st.markdown(f"<p style='line-height:1.6; color:#a0aec0; font-size:1.1rem;'>{ozet}</p>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div style="display:flex; gap:15px; margin-top:25px;">
+                        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" style="background-color:#E50914; color:white; padding:12px 30px; text-decoration:none; border-radius:6px; font-weight:800; font-size:1rem; text-transform:uppercase; box-shadow: 0 4px 10px rgba(229,9,20,0.3);">▶ Şimdi İzle</a>
+                        <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" style="background-color:transparent; border: 2px solid #555; color:white; padding:10px 30px; text-decoration:none; border-radius:6px; font-weight:800; font-size:1rem; text-transform:uppercase; transition: 0.3s;" onmouseover="this.style.borderColor='#fff'" onmouseout="this.style.borderColor='#555'">IMDb</a>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    if len(st.session_state.gosterilen_film_ids) > 50:
+                        st.session_state.gosterilen_film_ids = []
+                    break 
             else:
-                st.error("Kriterlerinize uygun bir yapım bulunamadı.")
-
-
-else:
-    # İki farklı input yerine TEK BİR ARAMA ÇUBUĞU oluşturduk.
-    placeholder_text = "Örn: Matrix, Breaking Bad, Cosmos..."
-    search_query = st.text_input("Arama", placeholder=f"🔍 Ne izlemek istiyorsunuz? ({placeholder_text})")
-
-    if search_query:
-        # 1. Doğrudan arama sonuçlarını göster
-        st.markdown(f"### '{search_query}' İçin Arama Sonuçları")
-        search_type = 'movie' if secim in ["Film", "Belgesel"] else 'tv'
-        search_results = get_tmdb_search(search_query, TMDB_API_KEY, search_type)
-        filtered_search = [i for i in search_results if i.get('poster_path')]
-
-        if filtered_search:
-            render_scrollable_strip("Sonuçlar", filtered_search)
-        else:
-            st.warning("Maalesef aradığınız kriterlere uygun bir sonuç bulunamadı.")
+                st.warning("Bu kategoride daha fazla yeni öneri kalmadı!")
 
         # 2. TSV veritabanından benzerini bulup önerileri göster (Sizin eski mantığınız)
         matched_imdb_id = None
