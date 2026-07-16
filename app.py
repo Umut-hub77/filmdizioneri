@@ -15,7 +15,7 @@ try:
 except Exception:
     _page_icon = "🍿" 
 
-st.set_page_config(page_title="Seyir Rehberi", page_icon=_page_icon, layout="wide")
+st.set_page_config(page_title="NextWatch", page_icon=_page_icon, layout="wide")
 TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 
 
