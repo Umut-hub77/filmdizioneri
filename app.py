@@ -225,24 +225,48 @@ def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movi
 
 @st.cache_data(ttl=0) 
 def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
-    random_page = random.randint(1, 50)
+    """Netflix tarzı: sadece yeterli oy sayısına ulaşmış VE yüksek puanlı,
+    yani hem kaliteli hem de 'tanınır' yapımlar arasından rastgele seçer.
+    Önce en sıkı kaliteli filtreyi dener, sonuç çıkmazsa (niş türlerde
+    az veri olabileceği için) kademeli olarak biraz daha gevşetir."""
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
-    params = {
-        'api_key': api_key, 
-        'with_genres': genre_id, 
-        'language': 'tr-TR', 
-        'page': random_page, 
-        'vote_average.gte': 6.0, 
-        'sort_by' : 'desc'
+    base_params = {
+        'api_key': api_key,
+        'with_genres': genre_id,
+        'language': 'tr-TR',
+        'sort_by': 'vote_average.desc',
+        'include_adult': 'false',
+        'without_genres': '99',  # belgesel karışmasın
     }
-    try:
-        resp = requests.get(url, params=params).json()
-        results = [i for i in resp.get('results', []) if i.get('poster_path')]
-        
-        if results: 
-            return random.choice(results)
-    except: 
-        pass
+    # (min_oy_puani, min_oy_sayisi) - sırayla dene, ilk sonuç bulanı kullan
+    quality_tiers = [
+        (6.8, 600),   # en kaliteli / en tanınır
+        (6.5, 250),
+        (6.2, 80),
+        (6.0, 30),    # niş türler için son çare
+    ]
+    for min_rating, min_votes in quality_tiers:
+        params = {
+            **base_params,
+            'vote_average.gte': min_rating,
+            'vote_count.gte': min_votes,
+        }
+        try:
+            first = requests.get(url, params={**params, 'page': 1}, timeout=5).json()
+            total_pages = first.get('total_pages', 0)
+            if not total_pages:
+                continue
+            # Çok derin sayfalara inip alaka düzeyi düşük sonuçlara ulaşmayalım
+            random_page = random.randint(1, min(total_pages, 12))
+            resp = requests.get(url, params={**params, 'page': random_page}, timeout=5).json()
+            results = [
+                i for i in resp.get('results', [])
+                if i.get('poster_path') and i.get('overview')  # afişi/özeti olmayan boş kayıtları ele
+            ]
+            if results:
+                return random.choice(results)
+        except:
+            continue
     return None
 
 
