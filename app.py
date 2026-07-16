@@ -54,39 +54,69 @@ border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 width: 100%;
 }
 /* 1. Yuvarlakları (Radio) tamamen gizle */
-div[role="radiogroup"] label input[type="radio"] {
+/* 1. Üst Menü Taşıyıcısı (Mobil Uyumlu) */
+div[role="radiogroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important; /* Yazıların alt satıra inmesini kesinlikle engeller */
+    justify-content: space-around !important;
+    gap: 10px !important;
+    width: 100% !important;
+    overflow-x: auto !important; /* Ekrana sığmazsa mobilde yana kaydırılabilir yapar */
+    padding-bottom: 5px !important; 
+    scrollbar-width: none; /* Firefox için scrollbar gizleme */
+}
+div[role="radiogroup"]::-webkit-scrollbar { 
+    display: none; /* Chrome/Safari için scrollbar gizleme */
+}
+
+/* 2. Radyo Yuvarlaklarını Gizle */
+div[role="radiogroup"] label input[type="radio"],
+div[data-baseweb="radio"] {
     display: none !important;
 }
 
-/* 2. Butonları buton gibi göstermek için temel yapı */
-div[role="radiogroup"] {
-    display: flex !important;
-    flex-wrap: nowrap !important; /* Alt satıra geçmeyi engeller */
-    gap: 15px !important;
-}
-
+/* 3. Menü Başlıkları (Çerçevesiz Temel Yapı) */
 div[role="radiogroup"] > label {
-    background-color: #1a1a1a !important;
-    border: 1px solid #333 !important;
-    border-radius: 8px !important;
-    padding: 10px 25px !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 10px 5px !important;
     cursor: pointer !important;
-    transition: all 0.2s ease !important;
+    transition: all 0.3s ease !important;
+    border-bottom: 2px solid transparent !important; /* Başlangıçta görünmez alt çizgi */
+    border-radius: 0 !important; /* Kutu görünümünü sıfırla */
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
 }
 
-/* 3. Seçili buton stili */
-div[role="radiogroup"] label[data-checked="true"] {
-    background-color: #E50914 !important;
-    border-color: #E50914 !important;
+/* 4. Yazı Stili (Sönük Hal) */
+div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
+    color: #8c8c8c !important; /* Başlangıçta sönük gri */
+    font-weight: 600 !important;
+    font-size: 1.1rem !important;
+    margin: 0 !important;
+    white-space: nowrap !important; /* Yazıların asla bölünmemesini sağlar */
+    transition: color 0.3s ease !important;
 }
 
-/* 4. "Format:" yazısının kırılmasını engellemek için */
+/* 5. Hover (Üstüne Gelince Biraz Aydınlanma) */
+div[role="radiogroup"] > label:hover div[data-testid="stMarkdownContainer"] p {
+    color: #d1d1d1 !important;
+}
+
+/* 6. Aktif / Seçili Durum (Tam Beyaz Yazı ve Alt Çizgi) */
+div[role="radiogroup"] label[data-checked="true"] {
+    border-bottom: 2px solid #ffffff !important; /* Altına beyaz çizgi */
+}
+div[role="radiogroup"] label[data-checked="true"] div[data-testid="stMarkdownContainer"] p {
+    color: #ffffff !important; /* Seçiliyken tam aydınlık beyaz */
+}
+
+/* "Format:" yazısının kırılmasını engellemek için */
 div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
     white-space: nowrap !important;
-    margin-right: 20px !important;
+    margin-right: 15px !important;
 }
 
 /* Arama Çubuğu */
