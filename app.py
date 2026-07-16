@@ -58,11 +58,12 @@ div[data-testid="stRadio"] > label[data-testid="stWidgetLabel"] p {
 }
 
 /* Radyo grubunun görsel YUVARLAĞINI kesin olarak kaldır.
-   Önceki deneme sadece 'div' etiketini hedefliyordu; Streamlit/BaseWeb
-   bazı sürümlerde daireyi span ya da başka bir etiketle render ediyor.
-   Bu yüzden etiket/tag farketmeksizin, sadece metni taşıyan
-   stMarkdownContainer DIŞINDAKİ her şeyi gizliyoruz. Bu yöntem garanti çalışır. */
-div[role="radiogroup"] label > *:not([data-testid="stMarkdownContainer"]) {
+   ÖNEMLİ: Önceki "metin dışındaki her şeyi gizle" yöntemi, metin kutusunun
+   dairenin bulunduğu kutunun İÇİNE iç içe yerleşmiş olması yüzünden
+   yazıları da götürdü. Bu sefer tam tersi mantık: sadece İÇİNDE
+   input[type=radio] bulunan kutuyu (yani gerçek daireyi) hedefliyoruz,
+   metin kutusuna hiç dokunmuyoruz. */
+div[role="radiogroup"] label > *:has(input[type="radio"]) {
     display: none !important;
     width: 0 !important;
     height: 0 !important;
