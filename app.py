@@ -102,22 +102,30 @@ border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !im
 """, unsafe_allow_html=True)
 
 @st.cache_data
+# --- VERİ YÜKLEME (PARQUET) ---
+@st.cache_data
 def load_imdb_data():
     try:
+        # Tek bir küçük parquet dosyasını okuyoruz
         df = pd.read_parquet('imdb_verisi_kucuk.parquet')
 
+        # 'type' sütunu yoksa oluşturalım
         if 'type' not in df.columns and 'titleType' in df.columns:
             df['type'] = df['titleType'].apply(lambda x: 'movie' if x == 'movie' else 'tv')
 
-            df['genres'] = df['genres'].fillna('')
-            df['numVotes'] = df['numVotes'].fillna(0).astype(int)
-            df['averageRating'] = df['averageRating'].fillna(0.0)
-            df['startYear'] = df['startYear'].fillna('?')
+        # DİKKAT: Buradaki satırları if bloğunun dışına çıkardık. 
+        # Böylece if koşulu sağlanmasa bile işlemler yapılıp veri döndürülecek.
+        df['genres'] = df['genres'].fillna('')
+        df['numVotes'] = df['numVotes'].fillna(0).astype(int)
+        df['averageRating'] = df['averageRating'].fillna(0.0)
+        df['startYear'] = df['startYear'].fillna('?')
 
-            return df.reset_index(drop=True)
+        return df.reset_index(drop=True)
+        
     except Exception as e:
         st.error(f"Veri yükleme hatası: {e}")
         st.stop()
+        return pd.DataFrame() # Kodun çökmesini önlemek için yedek
 
 @st.cache_data(ttl=3600)
 def get_tmdb_genres(api_key: str, media_type: str):
