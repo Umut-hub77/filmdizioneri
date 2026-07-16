@@ -13,7 +13,7 @@ from PIL import Image
 try:
     _page_icon = Image.open("icon.png")
 except Exception:
-    _page_icon = "🍿"  # icon.png bulunamazsa (repoya eklenmediyse) yedek emoji
+    _page_icon = "🍿" 
 
 st.set_page_config(page_title="Seyir Rehberi", page_icon=_page_icon, layout="wide")
 TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
@@ -138,19 +138,13 @@ border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !im
 """, unsafe_allow_html=True)
 
 @st.cache_data
-# --- VERİ YÜKLEME (PARQUET) ---
-@st.cache_data
 def load_imdb_data():
     try:
-        # Tek bir küçük parquet dosyasını okuyoruz
         df = pd.read_parquet('imdb_verisi_kucuk.parquet')
 
-        # 'type' sütunu yoksa oluşturalım
         if 'type' not in df.columns and 'titleType' in df.columns:
             df['type'] = df['titleType'].apply(lambda x: 'movie' if x == 'movie' else 'tv')
 
-        # DİKKAT: Buradaki satırları if bloğunun dışına çıkardık. 
-        # Böylece if koşulu sağlanmasa bile işlemler yapılıp veri döndürülecek.
         df['genres'] = df['genres'].fillna('')
         df['numVotes'] = df['numVotes'].fillna(0).astype(int)
         df['averageRating'] = df['averageRating'].fillna(0.0)
@@ -161,7 +155,7 @@ def load_imdb_data():
     except Exception as e:
         st.error(f"Veri yükleme hatası: {e}")
         st.stop()
-        return pd.DataFrame() # Kodun çökmesini önlemek için yedek
+        return pd.DataFrame() 
 @st.cache_data(ttl=3600)
 def get_imdb_id(tmdb_id, media_type):
     """TMDb ID'sini kullanarak filmin/dizinin resmi IMDb tt kimliğini bulur."""
@@ -236,14 +230,14 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
         'language': 'tr-TR',
         'sort_by': 'vote_average.desc',
         'include_adult': 'false',
-        'without_genres': '99',  # belgesel karışmasın
+        'without_genres': '99', 
     }
-    # (min_oy_puani, min_oy_sayisi) - sırayla dene, ilk sonuç bulanı kullan
+
     quality_tiers = [
-        (6.8, 600),   # en kaliteli / en tanınır
+        (6.8, 600),   
         (6.5, 250),
         (6.2, 80),
-        (6.0, 30),    # niş türler için son çare
+        (6.0, 30),    
     ]
     for min_rating, min_votes in quality_tiers:
         params = {
@@ -256,12 +250,12 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
             total_pages = first.get('total_pages', 0)
             if not total_pages:
                 continue
-            # Çok derin sayfalara inip alaka düzeyi düşük sonuçlara ulaşmayalım
+
             random_page = random.randint(1, min(total_pages, 12))
             resp = requests.get(url, params={**params, 'page': random_page}, timeout=5).json()
             results = [
                 i for i in resp.get('results', [])
-                if i.get('poster_path') and i.get('overview')  # afişi/özeti olmayan boş kayıtları ele
+                if i.get('poster_path') and i.get('overview') 
             ]
             if results:
                 return random.choice(results)
