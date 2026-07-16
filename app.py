@@ -11,9 +11,7 @@ import urllib.parse
 st.set_page_config(page_title="Seyir Rehberi", page_icon="🍿", layout="wide")
 TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 
-# ==========================================
-# 0. KURUMSAL TASARIM VE ÜST MENÜ (NAVBAR) CSS
-# ==========================================
+
 st.markdown("""
 <style>
 /* 1. Resmi ve Kurumsal Font Yüklemesi */
@@ -103,20 +101,14 @@ border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !im
 </style>
 """, unsafe_allow_html=True)
 
-
-# --- VERİ YÜKLEME (TSV) ---
-# --- VERİ YÜKLEME (PARQUET) ---
 @st.cache_data
 def load_imdb_data():
     try:
-        # Tek bir küçük parquet dosyasını okuyoruz
         df = pd.read_parquet('imdb_verisi_kucuk.parquet')
 
-        # 'type' sütunu yoksa oluşturalım
         if 'type' not in df.columns and 'titleType' in df.columns:
             df['type'] = df['titleType'].apply(lambda x: 'movie' if x == 'movie' else 'tv')
 
-            # Boş değerleri dolduralım
             df['genres'] = df['genres'].fillna('')
             df['numVotes'] = df['numVotes'].fillna(0).astype(int)
             df['averageRating'] = df['averageRating'].fillna(0.0)
@@ -127,8 +119,6 @@ def load_imdb_data():
         st.error(f"Veri yükleme hatası: {e}")
         st.stop()
 
-
-# --- API FONKSİYONLARI ---
 @st.cache_data(ttl=3600)
 def get_tmdb_genres(api_key: str, media_type: str):
     url = f"https://api.themoviedb.org/3/genre/{media_type}/list"
@@ -179,9 +169,8 @@ def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movi
     except: pass
     return None
 
-@st.cache_data(ttl=0) # Önbelleği kısa süreli tutuyoruz ki her seferinde taze veri çeksin
+@st.cache_data(ttl=0) 
 def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
-    # Rastgele sayfayı 1 ile 20 arası (yaklaşık 400 sonuç) genişletiyoruz
     random_page = random.randint(1, 50)
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
     params = {
@@ -196,7 +185,6 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
         resp = requests.get(url, params=params).json()
         results = [i for i in resp.get('results', []) if i.get('poster_path')]
         
-        # Seçim havuzunu genişletmek için daha fazla sonuç alıyoruz
         if results: 
             return random.choice(results)
     except: 
@@ -295,9 +283,7 @@ def render_scrollable_strip(title: str, items: list):
     components.html(html_content, height=330, scrolling=False)
 
 
-# ==========================================
-# 1. ARAYÜZ VE ÜST MENÜ (NAVBAR)
-# ==========================================
+
 st.markdown('<h1 class="main-title">Seyir Rehberi</h1>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">İzleyecek bir şeyler bulun, hikaye ve atmosfere göre en iyi önerileri keşfedin.</p>', unsafe_allow_html=True)
 
@@ -307,9 +293,7 @@ df_all = load_imdb_data()
 secim = st.radio("Menü", ["Film", "Dizi", "Belgesel", "Ne İzlesem?"], horizontal=True, label_visibility="collapsed")
 media_type = 'tv' if secim == "Dizi" else 'movie'
 
-# ==========================================
-# 2. "NE İZLESEM?" SEKMESİ
-# ==========================================
+
 if secim == "Ne İzlesem?":
     st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
     st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
@@ -352,18 +336,14 @@ if secim == "Ne İzlesem?":
                 st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
 
-# ==========================================
-# 3. KATEGORİLER VE TEKİL ARAMA ÇUBUĞU
-# ==========================================
 else:
     # İki farklı input yerine TEK BİR ARAMA ÇUBUĞU oluşturduk.
     placeholder_text = "Örn: Matrix, Breaking Bad, Cosmos..."
     search_query = st.text_input("Arama", placeholder=f"🔍 Ne izlemek istiyorsunuz? ({placeholder_text})")
 
-    # EĞER ARAMA KUTUSUNA BİR ŞEY YAZILDIYSA:
     if search_query:
         # 1. Doğrudan arama sonuçlarını göster
-        st.markdown(f"### 🎯 '{search_query}' İçin Arama Sonuçları")
+        st.markdown(f"### '{search_query}' İçin Arama Sonuçları")
         search_type = 'movie' if secim in ["Film", "Belgesel"] else 'tv'
         search_results = get_tmdb_search(search_query, TMDB_API_KEY, search_type)
         filtered_search = [i for i in search_results if i.get('poster_path')]
@@ -403,7 +383,6 @@ else:
             if oneriler:
                 render_scrollable_strip(f"✨ '{matched_title}' Sevenler İçin Öneriler", oneriler)
 
-    # EĞER ARAMA YAPILMADIYSA NORMAL KATEGORİLERİ GÖSTER:
     else:
         st.markdown("<hr style='border-color: transparent;'>", unsafe_allow_html=True)
 
