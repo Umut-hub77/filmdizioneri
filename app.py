@@ -139,6 +139,25 @@ div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label[data-che
     font-weight: 700 !important;
 }
 
+/* Mobilde: "center + overflow-x:auto" kombinasyonu ilk öğeyi (Film) sola
+   kesik/gizli bırakıyordu. Küçük ekranlarda tüm sekmeleri eşit aralıklı
+   dağıtıp taşmayı tamamen engelliyoruz, böylece kaydırmaya gerek kalmıyor. */
+@media (max-width: 640px) {
+    div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] {
+        justify-content: space-between !important;
+        overflow-x: visible !important;
+        gap: 2px !important;
+    }
+    div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label {
+        padding: 10px 6px !important;
+        flex: 1 1 0 !important;
+    }
+    div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label p {
+        font-size: 0.82rem !important;
+        text-align: center !important;
+    }
+}
+
 /* ============================================= */
 /* FORMAT SEÇİMİ (Film / Dizi segmented control)  */
 /* "Ne İzlesem?" sekmesindeki ikinci radio        */
@@ -359,20 +378,29 @@ def render_scrollable_strip(title: str, items: list):
 
     /* BAŞLIK KISMI: BEYAZ ARKA PLAN VE KOYU YAZI */
     .header {{
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
     margin-bottom: 15px; padding: 10px 15px;
     background-color: white; border-radius: 8px; /* Beyaz kutu */
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }}
-    .header h3 {{ margin: 0; font-size: 1.2rem; font-weight: 700; color: #141414; }} /* Başlık siyah */
-
-    /* OK BUTONLARI */
-    .nav-buttons {{ display: flex; gap: 8px; }}
-    .nav-btn {{
-    background: #141414; border: none; color: white; width: 30px; height: 30px;
-    border-radius: 50%; cursor: pointer; transition: 0.3s;
+    .header h3 {{
+    margin: 0; font-size: 1.2rem; font-weight: 700; color: #141414;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    }} /* Başlık siyah, taşarsa üç nokta ile kısalır */
+    @media (max-width: 480px) {{
+        .header h3 {{ font-size: 1rem; }}
+        .header {{ padding: 8px 10px; }}
     }}
-    .nav-btn:hover {{ background: #E50914; }}
+
+    /* OK BUTONLARI - yuvarlak değil, ince dikdörtgen/pill görünüm */
+    .nav-buttons {{ display: flex; gap: 6px; flex-shrink: 0; }}
+    .nav-btn {{
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(0,0,0,0.08);
+    color: #141414; width: 32px; height: 26px;
+    border-radius: 6px; cursor: pointer; transition: 0.25s;
+    font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
+    }}
+    .nav-btn:hover {{ background: #E50914; color: #ffffff; border-color: #E50914; }}
 
     /* AFİŞLER VE DİĞERLERİ */
     .scroll-container {{ display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; scrollbar-width: none; }}
