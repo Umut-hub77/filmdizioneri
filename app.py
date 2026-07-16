@@ -476,7 +476,7 @@ if secim == "Ne İzlesem?":
     genre_dict = {g['name']: str(g['id']) for g in genres}
     selected_genre_name = st.selectbox("Tür Tercihiniz:", list(genre_dict.keys()))
 
-    if st.button("ÖNERİ GETİR", use_container_width=True, type="primary"):
+    if st.button("ÖNERİ GETİR", use_container_width=True):
         with st.spinner("Arşiv taranıyor..."):
             chosen = get_random_recommendation(genre_dict[selected_genre_name], m_type, TMDB_API_KEY)
             if chosen:
