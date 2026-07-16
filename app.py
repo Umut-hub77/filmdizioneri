@@ -345,23 +345,46 @@ def render_scrollable_strip(title: str, items: list):
 
 
 
-# Modern SVG Logo ve Alt Başlık
+# Modern SVG Logo ve Alt Başlık (İç İçe NW Monogramı ve Geçme Butonu)
 logo_svg = """
-<svg width="320" height="60" viewBox="0 0 320 60" xmlns="http://www.w3.org/2000/svg">
-  <!-- Kırmızı İkon Arka Planı -->
-  <rect x="0" y="10" width="40" height="40" rx="10" fill="#E50914" />
-  <!-- Oynat (Play) İkonu -->
-  <polygon points="16,22 16,38 28,30" fill="#ffffff" />
-  <!-- Logo Metni -->
-  <text x="55" y="42" font-family="'Montserrat', sans-serif" font-size="30" font-weight="900" fill="#ffffff" letter-spacing="-1.5">
+<svg width="340" height="60" viewBox="0 0 340 60" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Kırmızı Degrade (3D Hissi İçin) -->
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff1a1a" />
+      <stop offset="100%" stop-color="#b30000" />
+    </linearGradient>
+    <!-- Neon Gölge Efekti -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#E50914" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- GEÇME BUTONU (NEXT ICON) ARKA PLANI -->
+  <g filter="url(#glow)">
+    <!-- Sağ Ok Formu (Chevron) -->
+    <path d="M 6 12 L 28 12 L 44 30 L 28 48 L 6 48 Z" fill="url(#brandGrad)" stroke="url(#brandGrad)" stroke-width="6" stroke-linejoin="round"/>
+    <!-- Geçme Butonu Dik Çizgisi -->
+    <line x1="52" y1="12" x2="52" y2="48" stroke="url(#brandGrad)" stroke-width="6" stroke-linecap="round" />
+  </g>
+
+  <!-- İÇ İÇE GEÇMİŞ N VE W HARFLERİ -->
+  <g transform="translate(2, 0)">
+    <!-- N Harfi (Parlak Beyaz) -->
+    <path d="M 12 40 L 12 20 L 22 40 L 22 20" stroke="#ffffff" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- W Harfi (Yarı Şeffaf - Katmanlı Kesit Efekti) -->
+    <path d="M 18 24 L 24 40 L 29 28 L 34 40 L 39 24" stroke="#ffffff" stroke-opacity="0.55" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+
+  <!-- LOGO METNİ -->
+  <text x="70" y="42" font-family="'Montserrat', sans-serif" font-size="32" font-weight="900" fill="#ffffff" letter-spacing="-1.2">
     Next<tspan fill="#E50914">Watch</tspan>
   </text>
 </svg>
 """
 
 st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">İzleyecek bir şeyler bulun, hikaye ve atmosfere göre en iyi önerileri keşfedin.</p>', unsafe_allow_html=True)
-
+st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
 df_all = load_imdb_data()
 
 # Emojiler kaldırıldı, menü sağ üste hizalandı (CSS ile)
