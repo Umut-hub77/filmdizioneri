@@ -126,7 +126,17 @@ def load_imdb_data():
         st.error(f"Veri yükleme hatası: {e}")
         st.stop()
         return pd.DataFrame() # Kodun çökmesini önlemek için yedek
-
+@st.cache_data(ttl=3600)
+def get_imdb_id(tmdb_id, media_type):
+    """TMDb ID'sini kullanarak filmin/dizinin resmi IMDb tt kimliğini bulur."""
+    try:
+        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/external_ids"
+        res = requests.get(url, params={'api_key': TMDB_API_KEY}, timeout=3)
+        if res.status_code == 200:
+            return res.json().get('imdb_id')
+    except:
+        pass
+    return None
 @st.cache_data(ttl=3600)
 def get_tmdb_genres(api_key: str, media_type: str):
     url = f"https://api.themoviedb.org/3/genre/{media_type}/list"
