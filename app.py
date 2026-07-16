@@ -15,7 +15,7 @@ TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 st.markdown("""
 <style>
 /* 1. Resmi ve Kurumsal Font Yüklemesi */
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;600;700;900&display=swap');
 
 html, body, [class*="css"] {
 font-family: 'Montserrat', sans-serif !important;
@@ -43,80 +43,181 @@ text-align: left; color: #a0aec0; font-size: 1.1rem;
 margin-top: 5px; margin-bottom: 30px; font-weight: 400;
 }
 
-/* 2. Üst Menü Konumlandırması (Tam Ortalanmış ve Eşit Dağıtılmış) */
-div[data-testid="stRadio"] {
-display: flex;
-justify-content: center; /* Menüyü sayfanın tam ortasına hizalar */
-margin-top: 20px;
-margin-bottom: 30px;
-padding-bottom: 15px;
-border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-width: 100%;
-}
-/* 1. Yuvarlakları (Radio) tamamen gizle */
-/* 1. Üst Menü Taşıyıcısı (Mobil Uyumlu) */
-div[role="radiogroup"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important; /* Yazıların alt satıra inmesini kesinlikle engeller */
-    justify-content: space-around !important;
-    gap: 10px !important;
-    width: 100% !important;
-    overflow-x: auto !important; /* Ekrana sığmazsa mobilde yana kaydırılabilir yapar */
-    padding-bottom: 5px !important; 
-    scrollbar-width: none; /* Firefox için scrollbar gizleme */
-}
-div[role="radiogroup"]::-webkit-scrollbar { 
-    display: none; /* Chrome/Safari için scrollbar gizleme */
+/* ============================================= */
+/* RADIO (SEKME / TOGGLE) ORTAK TEMEL AYARLARI    */
+/* ============================================= */
+
+/* Tüm radio widget'larının etiketini (Menü, Format: vb.) ekrandan gizle,
+   ama Format: metnini ayrıca görünür kılıyoruz aşağıda */
+div[data-testid="stRadio"] > label[data-testid="stWidgetLabel"] p {
+    color: #8c8c8c !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-/* 2. Radyo Yuvarlaklarını Gizle */
-div[role="radiogroup"] label input[type="radio"],
-div[data-baseweb="radio"] {
+/* Radyo grubunun görsel YUVARLAĞINI kesin olarak kaldır.
+   Streamlit her label'ın İLK child div'inde görsel daireyi render eder,
+   input[type=radio] zaten gizli olduğu için asıl sorun buydu. */
+div[role="radiogroup"] > label > div:first-child {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+div[role="radiogroup"] label input[type="radio"] {
     display: none !important;
 }
 
-/* 3. Menü Başlıkları (Çerçevesiz Temel Yapı) */
+div[role="radiogroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    scrollbar-width: none;
+}
+div[role="radiogroup"]::-webkit-scrollbar { display: none; }
+
 div[role="radiogroup"] > label {
     background: transparent !important;
     border: none !important;
-    padding: 10px 5px !important;
     cursor: pointer !important;
-    transition: all 0.3s ease !important;
-    border-bottom: 2px solid transparent !important; /* Başlangıçta görünmez alt çizgi */
-    border-radius: 0 !important; /* Kutu görünümünü sıfırla */
+    transition: all 0.25s ease !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-}
-
-/* 4. Yazı Stili (Sönük Hal) */
-div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
-    color: #8c8c8c !important; /* Başlangıçta sönük gri */
-    font-weight: 600 !important;
-    font-size: 1.1rem !important;
     margin: 0 !important;
-    white-space: nowrap !important; /* Yazıların asla bölünmemesini sağlar */
-    transition: color 0.3s ease !important;
 }
 
-/* 5. Hover (Üstüne Gelince Biraz Aydınlanma) */
-div[role="radiogroup"] > label:hover div[data-testid="stMarkdownContainer"] p {
-    color: #d1d1d1 !important;
-}
-
-/* 6. Aktif / Seçili Durum (Tam Beyaz Yazı ve Alt Çizgi) */
-div[role="radiogroup"] label[data-checked="true"] {
-    border-bottom: 2px solid #ffffff !important; /* Altına beyaz çizgi */
-}
-div[role="radiogroup"] label[data-checked="true"] div[data-testid="stMarkdownContainer"] p {
-    color: #ffffff !important; /* Seçiliyken tam aydınlık beyaz */
-}
-
-/* "Format:" yazısının kırılmasını engellemek için */
-div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
+div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
+    margin: 0 !important;
     white-space: nowrap !important;
-    margin-right: 15px !important;
+    transition: color 0.25s ease !important;
+}
+
+/* ============================================= */
+/* ANA ÜST MENÜ (Film / Dizi / Belgesel / Ne İzlesem?) */
+/* ============================================= */
+
+div[data-testid="stRadio"]:first-of-type {
+    margin-top: 15px;
+    margin-bottom: 30px;
+}
+div[data-testid="stRadio"]:first-of-type > label[data-testid="stWidgetLabel"] {
+    display: none !important;
+}
+div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] {
+    justify-content: center !important;
+    border-bottom: 1px solid rgba(255,255,255,0.09);
+    gap: 10px !important;
+}
+div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label {
+    padding: 12px 28px !important;
+    border-radius: 10px 10px 0 0 !important;
+    border-bottom: 3px solid transparent !important;
+}
+div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label:hover {
+    background: rgba(255,255,255,0.05) !important;
+}
+div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label:hover p {
+    color: #e2e2e2 !important;
+}
+div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label p {
+    color: #8c8c8c !important;
+    font-weight: 600 !important;
+    font-size: 1.08rem !important;
+}
+div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label[data-checked="true"] {
+    background: rgba(229,9,20,0.10) !important;
+    border-bottom: 3px solid #E50914 !important;
+}
+div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label[data-checked="true"] p {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* ============================================= */
+/* FORMAT SEÇİMİ (Film / Dizi segmented control)  */
+/* "Ne İzlesem?" sekmesindeki ikinci radio        */
+/* ============================================= */
+
+div[data-testid="stRadio"]:nth-of-type(2) {
+    margin: 6px 0 26px 0;
+}
+div[data-testid="stRadio"]:nth-of-type(2) > label[data-testid="stWidgetLabel"] {
+    margin-bottom: 8px !important;
+}
+div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] {
+    display: inline-flex !important;
+    width: fit-content !important;
+    background: #141414;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px;
+    padding: 4px;
+    gap: 4px !important;
+}
+div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label {
+    padding: 9px 26px !important;
+    border-radius: 999px !important;
+    border-bottom: none !important;
+}
+div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label p {
+    color: #a0aec0 !important;
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+}
+div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label:hover {
+    background: rgba(255,255,255,0.06) !important;
+}
+div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label[data-checked="true"] {
+    background: linear-gradient(135deg, #E50914, #a8050d) !important;
+    box-shadow: 0 3px 10px rgba(229,9,20,0.35) !important;
+}
+div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label[data-checked="true"] p {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* ============================================= */
+/* BUTONLAR (ÖNERİ GETİR vb.)                     */
+/* ============================================= */
+
+.stButton > button {
+    background: linear-gradient(135deg, #E50914, #a8050d) !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 14px 22px !important;
+    font-weight: 700 !important;
+    letter-spacing: 1px !important;
+    text-transform: uppercase !important;
+    font-size: 0.92rem !important;
+    transition: all 0.25s ease !important;
+    box-shadow: 0 4px 14px rgba(229,9,20,0.35) !important;
+}
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(229,9,20,0.5) !important;
+    background: linear-gradient(135deg, #ff1a28, #E50914) !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+.stButton > button:active {
+    transform: translateY(0) !important;
+}
+
+/* Selectbox'ı da tema ile uyumlu hale getir */
+div[data-baseweb="select"] > div {
+    background-color: #141414 !important;
+    border: 1px solid #333 !important;
+    border-radius: 8px !important;
+}
+div[data-baseweb="select"]:focus-within > div {
+    border-color: #E50914 !important;
+    box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important;
 }
 
 /* Arama Çubuğu */
