@@ -289,7 +289,7 @@ def render_scrollable_strip(title: str, items: list):
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         
         # Arama sayfasına değil, doğrudan filmin sayfasına yönlendiren zekice bir kısayol:
-        imdb_link = f"https://duckduckgo.com/?q=!imdb+{arama_metni}"
+        imdb_link = f"https://www.imdb.com/=!imdb+{arama_metni}"
         
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
 
