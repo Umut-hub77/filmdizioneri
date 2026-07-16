@@ -8,7 +8,6 @@ import random
 import urllib.parse
 import sqlite3
 import hashlib
-import secrets
 from PIL import Image
 
 # --- SAYFA AYARLARI ---
@@ -31,8 +30,6 @@ def init_db():
     # Favoriler tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS favorites 
                  (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT, UNIQUE(username, tmdb_id))''')
-    # Güvenli Oturum (Session) tablosu
-    c.execute('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT)')
     conn.commit()
     conn.close()
 
@@ -66,32 +63,6 @@ def login_user(username, password):
         return check_hashes(password, data[0])
     return False
 
-# --- SESSION YÖNETİMİ FONKSİYONLARI ---
-def create_session(username):
-    conn = sqlite3.connect('nextwatch.db', check_same_thread=False)
-    c = conn.cursor()
-    token = secrets.token_hex(16)
-    c.execute('INSERT INTO sessions (token, username) VALUES (?, ?)', (token, username))
-    conn.commit()
-    conn.close()
-    return token
-
-def get_user_by_session(token):
-    conn = sqlite3.connect('nextwatch.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('SELECT username FROM sessions WHERE token=?', (token,))
-    data = c.fetchone()
-    conn.close()
-    return data[0] if data else None
-
-def destroy_session(token):
-    conn = sqlite3.connect('nextwatch.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('DELETE FROM sessions WHERE token=?', (token,))
-    conn.commit()
-    conn.close()
-
-# --- FAVORİ FONKSİYONLARI ---
 def add_favorite(username, tmdb_id, title, media_type, poster_path):
     conn = sqlite3.connect('nextwatch.db', check_same_thread=False)
     c = conn.cursor()
@@ -117,26 +88,12 @@ def get_favorites(username):
     conn.close()
     return data
 
-# ==========================================
-# GÜVENLİ OTURUM YÖNETİMİ (URL TABANLI)
-# ==========================================
-if "session" in st.query_params:
-    session_token = st.query_params["session"]
-    valid_username = get_user_by_session(session_token)
-    if valid_username:
-        st.session_state.logged_in = True
-        st.session_state.username = valid_username
-        st.session_state.session_token = session_token
-    else:
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-elif "logged_in" not in st.session_state:
+# --- OTURUM YÖNETİMİ ---
+if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
 
-# ==========================================
-# HTML'DEN TETİKLENEN FAVORİ İŞLEMLERİ
-# ==========================================
+# --- URL PARAMETRELERİ İLE HTML'DEN TETİKLENEN FAVORİ İŞLEMLERİ ---
 if "action" in st.query_params:
     action = st.query_params["action"]
     if st.session_state.logged_in:
@@ -146,20 +103,17 @@ if "action" in st.query_params:
             fav_type = st.query_params.get("type")
             fav_poster = st.query_params.get("poster")
             add_favorite(st.session_state.username, fav_id, fav_title, fav_type, fav_poster)
-            st.toast(f"❤️ Favorilere eklendi!", icon="✅")
+            st.toast(f"❤️ Favorilere eklendi!")
         elif action == "remove_fav":
             remove_favorite(st.session_state.username, fav_id)
-            st.toast(f"💔 Favorilerden çıkarıldı!", icon="✅")
+            st.toast(f"💔 Favorilerden çıkarıldı!")
     else:
         st.sidebar.warning("Favori işlemi için giriş yapmalısınız!")
     
-    # URL'den işlem parametrelerini temizle ama oturum token'ını koru
-    keys_to_remove = ["action", "id", "title", "type", "poster"]
-    for k in keys_to_remove:
-        if k in st.query_params:
-            del st.query_params[k]
-    st.rerun()
+    st.query_params.clear() # URL'i temizle
+    st.rerun() # Sayfayı yenile ki butonlar güncellensin
 
+# Kullanıcının favorilerini bir sete alıyoruz (HTML içinde hızlıca "Ekle" veya "Kaldır" butonu göstermek için)
 user_favs_set = set()
 if st.session_state.logged_in:
     user_favs_set = {row[0] for row in get_favorites(st.session_state.username)}
@@ -251,9 +205,8 @@ border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !im
 with st.sidebar:
     st.image(_page_icon, width=60)
     if not st.session_state.logged_in:
-        # Başlıklar artık standart Markdown, temaya ve fonta tam uyumlu
-        st.markdown("### GİRİŞ YAP / KAYIT OL")
-        auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True, label_visibility="collapsed")
+        st.markdown("### Giriş Yap / Kayıt Ol")
+        auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True)
         user_input = st.text_input("Kullanıcı Adı")
         pass_input = st.text_input("Şifre", type="password")
         
@@ -266,11 +219,8 @@ with st.sidebar:
                         st.error("Bu kullanıcı adı zaten alınmış!")
                 else:
                     if login_user(user_input, pass_input):
-                        token = create_session(user_input)
                         st.session_state.logged_in = True
                         st.session_state.username = user_input
-                        st.session_state.session_token = token
-                        st.query_params["session"] = token
                         st.success("Giriş başarılı!")
                         st.rerun()
                     else:
@@ -279,19 +229,15 @@ with st.sidebar:
                 st.warning("Lütfen alanları doldurun.")
     else:
         st.markdown(f"### 👋 Hoş geldin, **{st.session_state.username}**")
-        st.info("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
+        st.markdown("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
         if st.button("🚪 Çıkış Yap"):
-            if "session_token" in st.session_state:
-                destroy_session(st.session_state.session_token)
             st.session_state.logged_in = False
             st.session_state.username = ""
-            if "session" in st.query_params:
-                del st.query_params["session"]
             st.rerun()
 
 
 # ==========================================
-# VERİ ÇEKME FONKSİYONLARI 
+# VERİ ÇEKME FONKSİYONLARI (Önceki kodlarınız)
 # ==========================================
 @st.cache_data
 def load_imdb_data():
@@ -425,8 +371,8 @@ def render_scrollable_strip(title: str, items: list):
     .action-btn {{ padding: 6px 10px; border-radius: 4px; text-decoration: none !important; font-size: 0.7rem; font-weight: bold; width: 85%; text-align: center; box-sizing: border-box; }}
     .btn-red {{ background: #E50914; color: white !important; }}
     .btn-dark {{ background: transparent; border: 1px solid white; color: white !important; }}
-    .btn-fav-add {{ background: transparent; border: 1px solid #ff3366; color: #ff3366 !important; cursor: pointer; }}
-    .btn-fav-remove {{ background: #ff3366; color: white !important; border: none; cursor: pointer; }}
+    .btn-fav-add {{ background: transparent; border: 1px solid #ff3366; color: #ff3366 !important; }}
+    .btn-fav-remove {{ background: #ff3366; color: white !important; border: none; }}
     </style>
     </head>
     <body>
@@ -439,8 +385,6 @@ def render_scrollable_strip(title: str, items: list):
     </div>
     <div id="{container_id}" class="scroll-container">
     """
-
-    current_session = st.session_state.get("session_token", "")
 
     for row in items:
         baslik = row.get('title') or row.get('name')
@@ -456,11 +400,12 @@ def render_scrollable_strip(title: str, items: list):
         imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
         
-        # JAVASCRIPT ÇÖZÜMÜ: Tıklanınca ana pencerenin(top window) URL parametrelerini günceller.
+        # Favori Butonu HTML Oluşturma (sadece giriş yapılmışsa çalışır)
+        fav_btn = ""
         if str(tmdb_id) in user_favs_set:
-            fav_btn = f'<a href="#" onclick="window.top.location.search=\'?session={current_session}&action=remove_fav&id={tmdb_id}\'; return false;" class="action-btn btn-fav-remove">💔 Kaldır</a>'
+            fav_btn = f'<a href="?action=remove_fav&id={tmdb_id}" target="_top" class="action-btn btn-fav-remove">💔 Kaldır</a>'
         else:
-            fav_btn = f'<a href="#" onclick="window.top.location.search=\'?session={current_session}&action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}\'; return false;" class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
+            fav_btn = f'<a href="?action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}" target="_top" class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
 
         html_content += f"""
         <div class="movie-card">
