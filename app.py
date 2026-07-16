@@ -277,20 +277,24 @@ def render_scrollable_strip(title: str, items: list):
     for row in items:
         baslik = row.get('title') or row.get('name')
         poster_path = row.get('poster_path')
-        if not poster_path: continue
+        tmdb_id = row.get('id')
+        if not poster_path or not tmdb_id: continue
 
-        # İsabet oranını artırmak için yıla da ihtiyacımız var
-        tarih = row.get('release_date') or row.get('first_air_date') or ""
-        yil = tarih[:4] if tarih else ""
-        
         safe_baslik = urllib.parse.quote(baslik)
-        arama_metni = urllib.parse.quote(f"{baslik} {yil}".strip())
-
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         
-        # Arama sayfasına değil, doğrudan filmin sayfasına yönlendiren zekice bir kısayol:
-        imdb_link = f"https://www.imdb.com/=!imdb+{arama_metni}"
+        # 1. Filmin/Dizinin türünü belirliyoruz
+        m_type_guess = 'movie' if 'title' in row else 'tv'
         
+        # 2. tt kimliğini arka planda çekiyoruz
+        imdb_id = get_imdb_id(tmdb_id, m_type_guess)
+        
+        # 3. Eğer tt kimliği varsa doğrudan sayfaya, yoksa mecburen aramaya yönlendiriyoruz
+        if imdb_id:
+            imdb_link = f"https://www.imdb.com/title/{imdb_id}/"
+        else:
+            imdb_link = f"https://www.imdb.com/find?q={safe_baslik}"
+
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
 
         html_content += f"""
@@ -342,9 +346,17 @@ if secim == "Ne İzlesem?":
                 puan = round(chosen.get('vote_average', 0), 1)
                 yil = (chosen.get('release_date') or chosen.get('first_air_date') or '?')[:4]
                 poster_url = f"https://image.tmdb.org/t/p/w500{chosen.get('poster_path')}"
+                
+                # Yeni tt kimlik entegrasyonu
+                tmdb_id = chosen.get('id')
+                imdb_id = get_imdb_id(tmdb_id, m_type)
+                
                 watch_link = f"https://www.justwatch.com/tr/ara?q={baslik.replace(' ', '%20')}"
-                imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
-
+                
+                if imdb_id:
+                    imdb_link = f"https://www.imdb.com/title/{imdb_id}/"
+                else:
+                    imdb_link = f"https://www.imdb.com/find?q={baslik.replace(' ', '%20')}"
                 col1, col2 = st.columns([1, 2.5])
                 with col1:
                     st.image(poster_url, use_column_width=True, clamp=True)
