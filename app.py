@@ -402,10 +402,10 @@ def render_scrollable_strip(title: str, items: list):
         
         # Favori Butonu HTML Oluşturma (sadece giriş yapılmışsa çalışır)
         fav_btn = ""
-    if str(tmdb_id) in user_favs_set:
-        fav_btn = f'<a href="?session={current_session}&action=remove_fav&id={tmdb_id}" target="_top" class="action-btn btn-fav-remove">❌ Listeden Çıkar</a>'
-    else:
-        fav_btn = f'<a href="?session={current_session}&action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}" target="_top" class="action-btn btn-fav-add">📌 Listeye Ekle</a>'
+        if str(tmdb_id) in user_favs_set:
+    fav_btn = f'<a href="?session={current_session}&action=remove_fav&id={tmdb_id}" target="_top" class="action-btn btn-fav-remove">❌ Listeden Çıkar</a>'
+else:
+    fav_btn = f'<a href="?session={current_session}&action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}" target="_top" class="action-btn btn-fav-add">📌 Listeye Ekle</a>'
 
         html_content += f"""
         <div class="movie-card">
@@ -611,3 +611,4 @@ else:
                         genre_name = genre['name']
                         category_items = get_tmdb_discover_by_genre(genre_id, TMDB_API_KEY, media_type, limit=15)
                         render_scrollable_strip(f"En İyi {genre_name} Yapımları", category_items)
+    
