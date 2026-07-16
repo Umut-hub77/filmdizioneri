@@ -8,14 +8,7 @@ import random
 from pathlib import Path
 import urllib.parse
 # --- SAYFA AYARLARI ---
-from PIL import Image
-
-try:
-    _page_icon = Image.open("icon.png")
-except Exception:
-    _page_icon = "🍿"  # icon.png bulunamazsa (repoya eklenmediyse) yedek emoji
-
-st.set_page_config(page_title="Seyir Rehberi", page_icon=_page_icon, layout="wide")
+st.set_page_config(page_title="Seyir Rehberi", page_icon="🍿", layout="wide")
 TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 
 
