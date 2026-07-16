@@ -8,7 +8,14 @@ import random
 from pathlib import Path
 import urllib.parse
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Seyir Rehberi", page_icon="🍿", layout="wide")
+from PIL import Image
+
+try:
+    _page_icon = Image.open("icon.png")
+except Exception:
+    _page_icon = "🍿"  # icon.png bulunamazsa (repoya eklenmediyse) yedek emoji
+
+st.set_page_config(page_title="Seyir Rehberi", page_icon=_page_icon, layout="wide")
 TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 
 
@@ -44,196 +51,67 @@ margin-top: 5px; margin-bottom: 30px; font-weight: 400;
 }
 
 /* ============================================= */
-/* RADIO (SEKME / TOGGLE) ORTAK TEMEL AYARLARI    */
+/* SEKME / FORMAT BUTONLARI                       */
+/* Daire sorununu kökten çözmek için st.radio yerine
+   st.button kullanıyoruz - butonlarda zaten daire yok,
+   sadece düz metin var. Seçili olan "primary", diğerleri
+   "secondary" tip. Tıklanınca kırmızı parlama efekti verir. */
 /* ============================================= */
 
-/* Tüm radio widget'larının etiketini (Menü, Format: vb.) ekrandan gizle,
-   ama Format: metnini ayrıca görünür kılıyoruz aşağıda */
-div[data-testid="stRadio"] > label[data-testid="stWidgetLabel"] p {
-    color: #8c8c8c !important;
+div[data-testid="stButton"] button,
+button[data-testid^="stBaseButton"] {
+    border-radius: 8px !important;
     font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px !important;
+    transition: all 0.2s ease !important;
+    width: 100% !important;
 }
 
-/* Radyo grubunun görsel YUVARLAĞINI kesin olarak kaldır.
-   ÖNEMLİ: Önceki "metin dışındaki her şeyi gizle" yöntemi, metin kutusunun
-   dairenin bulunduğu kutunun İÇİNE iç içe yerleşmiş olması yüzünden
-   yazıları da götürdü. Bu sefer tam tersi mantık: sadece İÇİNDE
-   input[type=radio] bulunan kutuyu (yani gerçek daireyi) hedefliyoruz,
-   metin kutusuna hiç dokunmuyoruz. */
-div[role="radiogroup"] label > *:has(input[type="radio"]) {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-}
-div[role="radiogroup"] label input[type="radio"] {
-    display: none !important;
-}
-/* Label'ın kendisi flex olsun ki gizlenen elemanlar boşluk bırakmasın */
-div[role="radiogroup"] > label {
-    gap: 0 !important;
-}
-
-div[role="radiogroup"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    gap: 6px !important;
-    overflow-x: auto !important;
-    scrollbar-width: none;
-}
-div[role="radiogroup"]::-webkit-scrollbar { display: none; }
-
-div[role="radiogroup"] > label {
+/* SEÇİLİ OLMAYAN sekme/format (secondary) - sade, sadece metin */
+div[data-testid="stButton"] button[kind="secondary"],
+button[data-testid="stBaseButton-secondary"] {
     background: transparent !important;
-    border: none !important;
-    cursor: pointer !important;
-    transition: all 0.25s ease !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    margin: 0 !important;
-}
-
-div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
-    margin: 0 !important;
-    white-space: nowrap !important;
-    transition: color 0.25s ease !important;
-}
-
-/* ============================================= */
-/* ANA ÜST MENÜ (Film / Dizi / Belgesel / Ne İzlesem?) */
-/* ============================================= */
-
-div[data-testid="stRadio"]:first-of-type {
-    margin-top: 15px;
-    margin-bottom: 30px;
-}
-div[data-testid="stRadio"]:first-of-type > label[data-testid="stWidgetLabel"] {
-    display: none !important;
-}
-div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] {
-    justify-content: center !important;
-    border-bottom: 1px solid rgba(255,255,255,0.09);
-    gap: 10px !important;
-}
-div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label {
-    padding: 12px 28px !important;
-    border-radius: 10px 10px 0 0 !important;
-    border-bottom: 3px solid transparent !important;
-}
-div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label:hover {
-    background: rgba(255,255,255,0.05) !important;
-}
-div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label:hover p {
-    color: #e2e2e2 !important;
-}
-div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label p {
+    border: 1px solid transparent !important;
     color: #8c8c8c !important;
-    font-weight: 600 !important;
-    font-size: 1.08rem !important;
+    box-shadow: none !important;
+    text-transform: none !important;
 }
-div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label[data-checked="true"] {
-    background: rgba(229,9,20,0.10) !important;
-    border-bottom: 3px solid #E50914 !important;
-}
-div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label[data-checked="true"] p {
+div[data-testid="stButton"] button[kind="secondary"]:hover,
+button[data-testid="stBaseButton-secondary"]:hover {
     color: #ffffff !important;
-    font-weight: 700 !important;
-}
-
-/* Mobilde: "center + overflow-x:auto" kombinasyonu ilk öğeyi (Film) sola
-   kesik/gizli bırakıyordu. Küçük ekranlarda tüm sekmeleri eşit aralıklı
-   dağıtıp taşmayı tamamen engelliyoruz, böylece kaydırmaya gerek kalmıyor. */
-@media (max-width: 640px) {
-    div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] {
-        justify-content: space-between !important;
-        overflow-x: visible !important;
-        gap: 2px !important;
-    }
-    div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label {
-        padding: 10px 6px !important;
-        flex: 1 1 0 !important;
-    }
-    div[data-testid="stRadio"]:first-of-type div[role="radiogroup"] > label p {
-        font-size: 0.82rem !important;
-        text-align: center !important;
-    }
-}
-
-/* ============================================= */
-/* FORMAT SEÇİMİ (Film / Dizi segmented control)  */
-/* "Ne İzlesem?" sekmesindeki ikinci radio        */
-/* ============================================= */
-
-div[data-testid="stRadio"]:nth-of-type(2) {
-    margin: 6px 0 26px 0;
-}
-div[data-testid="stRadio"]:nth-of-type(2) > label[data-testid="stWidgetLabel"] {
-    margin-bottom: 8px !important;
-}
-div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] {
-    display: inline-flex !important;
-    width: fit-content !important;
-    background: #141414;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 999px;
-    padding: 4px;
-    gap: 4px !important;
-}
-div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label {
-    padding: 9px 26px !important;
-    border-radius: 999px !important;
-    border-bottom: none !important;
-}
-div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label p {
-    color: #a0aec0 !important;
-    font-weight: 600 !important;
-    font-size: 0.95rem !important;
-}
-div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label:hover {
     background: rgba(255,255,255,0.06) !important;
 }
-div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label[data-checked="true"] {
+
+/* SEÇİLİ / ANA CTA (primary) - kırmızı dolgu + parlama (glow) */
+div[data-testid="stButton"] button[kind="primary"],
+button[data-testid="stBaseButton-primary"] {
     background: linear-gradient(135deg, #E50914, #a8050d) !important;
-    box-shadow: 0 3px 10px rgba(229,9,20,0.35) !important;
-}
-div[data-testid="stRadio"]:nth-of-type(2) div[role="radiogroup"] > label[data-checked="true"] p {
+    border: none !important;
     color: #ffffff !important;
-    font-weight: 700 !important;
+    box-shadow: 0 0 16px rgba(229,9,20,0.55) !important;
+}
+div[data-testid="stButton"] button[kind="primary"]:hover,
+button[data-testid="stBaseButton-primary"]:hover {
+    box-shadow: 0 0 26px rgba(229,9,20,0.85) !important;
+    transform: translateY(-1px) !important;
 }
 
-/* ============================================= */
-/* BUTONLAR (ÖNERİ GETİR vb.)                     */
-/* ============================================= */
+/* TIKLAMA ANI - patlama gibi parlama efekti */
+div[data-testid="stButton"] button:active,
+button[data-testid^="stBaseButton"]:active {
+    box-shadow: 0 0 32px rgba(229,9,20,0.95) !important;
+    transform: scale(0.96) !important;
+}
 
-.stButton > button {
-    background: linear-gradient(135deg, #E50914, #a8050d) !important;
-    color: #ffffff !important;
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 14px 22px !important;
-    font-weight: 700 !important;
-    letter-spacing: 1px !important;
-    text-transform: uppercase !important;
-    font-size: 0.92rem !important;
-    transition: all 0.25s ease !important;
-    box-shadow: 0 4px 14px rgba(229,9,20,0.35) !important;
+/* Ana üst menü butonları biraz daha büyük/ferah dursun */
+.top-menu-row div[data-testid="stButton"] button {
+    padding: 12px 10px !important;
+    font-size: 1rem !important;
 }
-.stButton > button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 20px rgba(229,9,20,0.5) !important;
-    background: linear-gradient(135deg, #ff1a28, #E50914) !important;
-    color: #ffffff !important;
-    border: none !important;
-}
-.stButton > button:active {
-    transform: translateY(0) !important;
+/* Format butonları daha kompakt */
+.format-row div[data-testid="stButton"] button {
+    padding: 8px 10px !important;
+    font-size: 0.9rem !important;
 }
 
 /* Selectbox'ı da tema ile uyumlu hale getir */
@@ -347,24 +225,48 @@ def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movi
 
 @st.cache_data(ttl=0) 
 def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
-    random_page = random.randint(1, 50)
+    """Netflix tarzı: sadece yeterli oy sayısına ulaşmış VE yüksek puanlı,
+    yani hem kaliteli hem de 'tanınır' yapımlar arasından rastgele seçer.
+    Önce en sıkı kaliteli filtreyi dener, sonuç çıkmazsa (niş türlerde
+    az veri olabileceği için) kademeli olarak biraz daha gevşetir."""
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
-    params = {
-        'api_key': api_key, 
-        'with_genres': genre_id, 
-        'language': 'tr-TR', 
-        'page': random_page, 
-        'vote_average.gte': 6.0, 
-        'sort_by' : 'desc'
+    base_params = {
+        'api_key': api_key,
+        'with_genres': genre_id,
+        'language': 'tr-TR',
+        'sort_by': 'vote_average.desc',
+        'include_adult': 'false',
+        'without_genres': '99',  # belgesel karışmasın
     }
-    try:
-        resp = requests.get(url, params=params).json()
-        results = [i for i in resp.get('results', []) if i.get('poster_path')]
-        
-        if results: 
-            return random.choice(results)
-    except: 
-        pass
+    # (min_oy_puani, min_oy_sayisi) - sırayla dene, ilk sonuç bulanı kullan
+    quality_tiers = [
+        (6.8, 600),   # en kaliteli / en tanınır
+        (6.5, 250),
+        (6.2, 80),
+        (6.0, 30),    # niş türler için son çare
+    ]
+    for min_rating, min_votes in quality_tiers:
+        params = {
+            **base_params,
+            'vote_average.gte': min_rating,
+            'vote_count.gte': min_votes,
+        }
+        try:
+            first = requests.get(url, params={**params, 'page': 1}, timeout=5).json()
+            total_pages = first.get('total_pages', 0)
+            if not total_pages:
+                continue
+            # Çok derin sayfalara inip alaka düzeyi düşük sonuçlara ulaşmayalım
+            random_page = random.randint(1, min(total_pages, 12))
+            resp = requests.get(url, params={**params, 'page': random_page}, timeout=5).json()
+            results = [
+                i for i in resp.get('results', [])
+                if i.get('poster_path') and i.get('overview')  # afişi/özeti olmayan boş kayıtları ele
+            ]
+            if results:
+                return random.choice(results)
+        except:
+            continue
     return None
 
 
@@ -518,8 +420,26 @@ logo_svg = """
 st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
 
-# Emojiler kaldırıldı, menü sağ üste hizalandı (CSS ile)
-secim = st.radio("Menü", ["Film", "Dizi", "Belgesel", "Ne İzlesem?"], horizontal=True, label_visibility="collapsed")
+# Ana üst menü - st.button tabanlı, yuvarlaksız, tıklanınca parlayan sekmeler
+if "secim" not in st.session_state:
+    st.session_state.secim = "Film"
+
+st.markdown('<div class="top-menu-row">', unsafe_allow_html=True)
+menu_items = ["Film", "Dizi", "Belgesel", "Ne İzlesem?"]
+menu_cols = st.columns(len(menu_items))
+for col, item in zip(menu_cols, menu_items):
+    with col:
+        if st.button(
+            item,
+            key=f"menu_{item}",
+            use_container_width=True,
+            type="primary" if st.session_state.secim == item else "secondary",
+        ):
+            st.session_state.secim = item
+            st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+
+secim = st.session_state.secim
 media_type = 'tv' if secim == "Dizi" else 'movie'
 
 
@@ -527,14 +447,36 @@ if secim == "Ne İzlesem?":
     st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
     st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
 
-    tur_tipi = st.radio("Format:", ["Film", "Dizi"], horizontal=True)
+    if "tur_tipi" not in st.session_state:
+        st.session_state.tur_tipi = "Film"
+
+    st.markdown(
+        "<p style='color:#8c8c8c; font-weight:600; font-size:0.85rem; "
+        "text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;'>Format</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="format-row">', unsafe_allow_html=True)
+    fcol1, fcol2, _spacer = st.columns([1, 1, 4])
+    with fcol1:
+        if st.button("Film", key="format_film", use_container_width=True,
+                      type="primary" if st.session_state.tur_tipi == "Film" else "secondary"):
+            st.session_state.tur_tipi = "Film"
+            st.rerun()
+    with fcol2:
+        if st.button("Dizi", key="format_dizi", use_container_width=True,
+                      type="primary" if st.session_state.tur_tipi == "Dizi" else "secondary"):
+            st.session_state.tur_tipi = "Dizi"
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    tur_tipi = st.session_state.tur_tipi
     m_type = "movie" if tur_tipi == "Film" else "tv"
 
     genres = get_tmdb_genres(TMDB_API_KEY, m_type)
     genre_dict = {g['name']: str(g['id']) for g in genres}
     selected_genre_name = st.selectbox("Tür Tercihiniz:", list(genre_dict.keys()))
 
-    if st.button("ÖNERİ GETİR", use_container_width=True):
+    if st.button("ÖNERİ GETİR", use_container_width=True, type="primary"):
         with st.spinner("Arşiv taranıyor..."):
             chosen = get_random_recommendation(genre_dict[selected_genre_name], m_type, TMDB_API_KEY)
             if chosen:
@@ -591,6 +533,7 @@ else:
             st.warning("Maalesef aradığınız kriterlere uygun bir sonuç bulunamadı.")
 
         # 2. TSV veritabanından benzerini bulup önerileri göster (Sizin eski mantığınız)
+        df_all = load_imdb_data()
         matched_imdb_id = None
         if secim == "Film": df = df_all[(df_all['type'] == 'movie') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
         elif secim == "Dizi": df = df_all[(df_all['type'] == 'tv') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
