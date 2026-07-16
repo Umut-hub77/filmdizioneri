@@ -345,7 +345,21 @@ def render_scrollable_strip(title: str, items: list):
 
 
 
-st.markdown('<h1 class="main-title">Seyir Rehberi</h1>', unsafe_allow_html=True)
+# Modern SVG Logo ve Alt Başlık
+logo_svg = """
+<svg width="320" height="60" viewBox="0 0 320 60" xmlns="http://www.w3.org/2000/svg">
+  <!-- Kırmızı İkon Arka Planı -->
+  <rect x="0" y="10" width="40" height="40" rx="10" fill="#E50914" />
+  <!-- Oynat (Play) İkonu -->
+  <polygon points="16,22 16,38 28,30" fill="#ffffff" />
+  <!-- Logo Metni -->
+  <text x="55" y="42" font-family="'Montserrat', sans-serif" font-size="30" font-weight="900" fill="#ffffff" letter-spacing="-1.5">
+    Next<tspan fill="#E50914">Watch</tspan>
+  </text>
+</svg>
+"""
+
+st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">İzleyecek bir şeyler bulun, hikaye ve atmosfere göre en iyi önerileri keşfedin.</p>', unsafe_allow_html=True)
 
 df_all = load_imdb_data()
