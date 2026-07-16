@@ -14,26 +14,120 @@ TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;700;900&display=swap');
+/* 1. Resmi ve Kurumsal Font Yüklemesi */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;700&display=swap');
 
-html, body, [class*="css"] { font-family: 'Montserrat', sans-serif !important; }
-
-/* ... (Diğer sayfa gizleme ayarların vs.) ... */
-
-/* =========================================
-   PREMIUM KONTROL PANELİ & BUTON CSS
-   ========================================= */
-
-/* 1. KİBARLAŞTIRILMIŞ ANA BUTON ("ÖNERİ GETİR") TASARIMI */
-button[kind="secondary"] {
-    background: linear-gradient(135deg, #E50914 0%, #b30000 100%) !important;
-    /* ... senin attığın kodun devamı ... */
-
-/* Seçili (Aktif) Durum - Alt Çizgi ve Beyaz Yazı */
-div[data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] div[data-testid="stMarkdownContainer"] p {
-    color: #ffffff !important; /* Tam aydınlık beyaz */
+html, body, [class*="css"] {
+font-family: 'Montserrat', sans-serif !important;
 }
 
+.block-container { padding-top: 2rem; max-width: 1300px; }
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Streamlit animasyonlarını gizle */
+div[data-testid="stStatusWidget"], div[data-testid="stSpinner"], .stSpinner {
+display: none !important; visibility: hidden !important;
+}
+
+/* Başlık Tasarımları */
+.main-title {
+font-size: 3.5rem; font-weight: 900; text-align: left;
+background: linear-gradient(to right, #ffffff, #a0aec0);
+-webkit-background-clip: text; -webkit-text-fill-color: transparent;
+margin-bottom: 0; padding-bottom: 0; letter-spacing: -1px;
+}
+.sub-title {
+text-align: left; color: #a0aec0; font-size: 1.1rem;
+margin-top: 5px; margin-bottom: 30px; font-weight: 400;
+}
+
+/* 2. Üst Menü Konumlandırması (Tam Ortalanmış ve Eşit Dağıtılmış) */
+div[data-testid="stRadio"] {
+display: flex;
+justify-content: center; /* Menüyü sayfanın tam ortasına hizalar */
+margin-top: 20px;
+margin-bottom: 30px;
+padding-bottom: 15px;
+border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+width: 100%;
+}
+/* 1. Yuvarlakları (Radio) tamamen gizle */
+/* 1. Üst Menü Taşıyıcısı (Mobil Uyumlu) */
+div[role="radiogroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important; /* Yazıların alt satıra inmesini kesinlikle engeller */
+    justify-content: space-around !important;
+    gap: 10px !important;
+    width: 100% !important;
+    overflow-x: auto !important; /* Ekrana sığmazsa mobilde yana kaydırılabilir yapar */
+    padding-bottom: 5px !important; 
+    scrollbar-width: none; /* Firefox için scrollbar gizleme */
+}
+div[role="radiogroup"]::-webkit-scrollbar { 
+    display: none; /* Chrome/Safari için scrollbar gizleme */
+}
+
+/* 2. Radyo Yuvarlaklarını Gizle */
+div[role="radiogroup"] label input[type="radio"],
+div[data-baseweb="radio"] {
+    display: none !important;
+}
+
+/* 3. Menü Başlıkları (Çerçevesiz Temel Yapı) */
+div[role="radiogroup"] > label {
+    background: transparent !important;
+    border: none !important;
+    padding: 10px 5px !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    border-bottom: 2px solid transparent !important; /* Başlangıçta görünmez alt çizgi */
+    border-radius: 0 !important; /* Kutu görünümünü sıfırla */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* 4. Yazı Stili (Sönük Hal) */
+div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
+    color: #8c8c8c !important; /* Başlangıçta sönük gri */
+    font-weight: 600 !important;
+    font-size: 1.1rem !important;
+    margin: 0 !important;
+    white-space: nowrap !important; /* Yazıların asla bölünmemesini sağlar */
+    transition: color 0.3s ease !important;
+}
+
+/* 5. Hover (Üstüne Gelince Biraz Aydınlanma) */
+div[role="radiogroup"] > label:hover div[data-testid="stMarkdownContainer"] p {
+    color: #d1d1d1 !important;
+}
+
+/* 6. Aktif / Seçili Durum (Tam Beyaz Yazı ve Alt Çizgi) */
+div[role="radiogroup"] label[data-checked="true"] {
+    border-bottom: 2px solid #ffffff !important; /* Altına beyaz çizgi */
+}
+div[role="radiogroup"] label[data-checked="true"] div[data-testid="stMarkdownContainer"] p {
+    color: #ffffff !important; /* Seçiliyken tam aydınlık beyaz */
+}
+
+/* "Format:" yazısının kırılmasını engellemek için */
+div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
+    white-space: nowrap !important;
+    margin-right: 15px !important;
+}
+
+/* Arama Çubuğu */
+.stTextInput > div > div > input { font-size: 1.1rem !important; padding: 12px 20px !important; }
+div[data-baseweb="input"] {
+border-radius: 8px !important; border: 1px solid #333 !important;
+background-color: #141414 !important; transition: all 0.3s ease;
+}
+div[data-baseweb="input"]:focus-within {
+border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
