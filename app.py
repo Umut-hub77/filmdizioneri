@@ -345,7 +345,7 @@ def render_scrollable_strip(title: str, items: list):
 
 
 
-# Modern SVG Logo ve Alt Başlık (İç İçe NW Monogramı ve Geçme Butonu)
+# Modern SVG Logo ve Alt Başlık (Galatasaray Tarzı İç İçe Geçmiş N ve W)
 logo_svg = """
 <svg width="340" height="60" viewBox="0 0 340 60" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -356,28 +356,30 @@ logo_svg = """
     </linearGradient>
     <!-- Neon Gölge Efekti -->
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#E50914" flood-opacity="0.4"/>
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#E50914" flood-opacity="0.4"/>
     </filter>
   </defs>
 
-  <!-- GEÇME BUTONU (NEXT ICON) ARKA PLANI -->
+  <!-- 1. BUTON ARKA PLANI (Kırmızı Yuvarlatılmış Kutu) -->
   <g filter="url(#glow)">
-    <!-- Sağ Ok Formu (Chevron) -->
-    <path d="M 6 12 L 28 12 L 44 30 L 28 48 L 6 48 Z" fill="url(#brandGrad)" stroke="url(#brandGrad)" stroke-width="6" stroke-linejoin="round"/>
-    <!-- Geçme Butonu Dik Çizgisi -->
-    <line x1="52" y1="12" x2="52" y2="48" stroke="url(#brandGrad)" stroke-width="6" stroke-linecap="round" />
+    <rect x="2" y="6" width="56" height="40" rx="10" fill="url(#brandGrad)" />
   </g>
 
-  <!-- İÇ İÇE GEÇMİŞ N VE W HARFLERİ -->
-  <g transform="translate(2, 0)">
-    <!-- N Harfi (Parlak Beyaz) -->
-    <path d="M 12 40 L 12 20 L 22 40 L 22 20" stroke="#ffffff" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
-    <!-- W Harfi (Yarı Şeffaf - Katmanlı Kesit Efekti) -->
-    <path d="M 18 24 L 24 40 L 29 28 L 34 40 L 39 24" stroke="#ffffff" stroke-opacity="0.55" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
-  </g>
+  <!-- 2. N VE W HARFLERİ (İç İçe Geçme İllüzyonu) -->
+  <!-- Önce Beyaz N Harfini Çiziyoruz -->
+  <path d="M 12 38 L 12 14 L 32 38 L 32 14" stroke="#ffffff" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+  
+  <!-- Siyah W Harfini N'nin Üzerine Çiziyoruz (Sol ve Sağ Kesişimlerde Siyah Üstte) -->
+  <path d="M 10 14 L 18 38 L 25 22 L 32 38 L 40 14" stroke="#121212" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+  
+  <!-- N'nin Orta Çapraz Çizgisinin Ufak Bir Kısmını Tekrar Çiziyoruz (Tam ortada Beyaz Siyahın üstüne çıkar, iç içe geçme tamamlanır) -->
+  <line x1="21" y1="24.8" x2="25" y2="29.6" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
 
-  <!-- LOGO METNİ -->
-  <text x="70" y="42" font-family="'Montserrat', sans-serif" font-size="32" font-weight="900" fill="#ffffff" letter-spacing="-1.2">
+  <!-- 3. SKIP NEXT ÇİZGİSİ (Butonun sağındaki 'Sonraki' çizgisi) -->
+  <rect x="44" y="14" width="4" height="24" rx="2" fill="#ffffff" />
+
+  <!-- 4. LOGO METNİ -->
+  <text x="68" y="36" font-family="'Montserrat', sans-serif" font-size="30" font-weight="900" fill="#ffffff" letter-spacing="-1.0">
     Next<tspan fill="#E50914">Watch</tspan>
   </text>
 </svg>
@@ -385,7 +387,6 @@ logo_svg = """
 
 st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
-df_all = load_imdb_data()
 
 # Emojiler kaldırıldı, menü sağ üste hizalandı (CSS ile)
 secim = st.radio("Menü", ["Film", "Dizi", "Belgesel", "Ne İzlesem?"], horizontal=True, label_visibility="collapsed")
