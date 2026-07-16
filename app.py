@@ -511,7 +511,7 @@ if secim == "Ne İzlesem?":
 
 else:
     # İki farklı input yerine TEK BİR ARAMA ÇUBUĞU oluşturduk.
-    place_holder="Örn. Matrix"
+    placeholder_text="Örn. Matrix"
     search_query = st.text_input("Arama", placeholder=f"🔍 Ne izlemek istiyorsunuz? ({placeholder_text})")
 
     if search_query:
