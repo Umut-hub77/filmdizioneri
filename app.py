@@ -502,7 +502,6 @@ else:
             st.warning("Maalesef aradığınız kriterlere uygun bir sonuç bulunamadı.")
 
         # 2. TSV veritabanından benzerini bulup önerileri göster (Sizin eski mantığınız)
-        df_all = load_imdb_data()
         matched_imdb_id = None
         if secim == "Film": df = df_all[(df_all['type'] == 'movie') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
         elif secim == "Dizi": df = df_all[(df_all['type'] == 'tv') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
