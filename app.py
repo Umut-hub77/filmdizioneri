@@ -31,7 +31,7 @@ def init_db():
     # Favoriler tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS favorites 
                  (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT, UNIQUE(username, tmdb_id))''')
-    # Güvenli Oturum (Session) tablosu (Sayfa yenilendiğinde çıkış yapılmasını engeller)
+    # Güvenli Oturum (Session) tablosu
     c.execute('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT)')
     conn.commit()
     conn.close()
@@ -120,7 +120,6 @@ def get_favorites(username):
 # ==========================================
 # GÜVENLİ OTURUM YÖNETİMİ (URL TABANLI)
 # ==========================================
-# Sayfa yenilendiğinde URL'deki token'ı kontrol edip hesaba otomatik giriş yaparız
 if "session" in st.query_params:
     session_token = st.query_params["session"]
     valid_username = get_user_by_session(session_token)
@@ -252,8 +251,8 @@ border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !im
 with st.sidebar:
     st.image(_page_icon, width=60)
     if not st.session_state.logged_in:
-        # Başlık artık ana sayfa ile aynı stile (Montserrat & Kalın) sahip
-        st.markdown("<h3 style='font-weight: 700; color: #ffffff; margin-bottom: 5px; font-size: 1.3rem;'>GİRİŞ YAP / KAYIT OL</h3>", unsafe_allow_html=True)
+        # Başlıklar artık standart Markdown, temaya ve fonta tam uyumlu
+        st.markdown("### GİRİŞ YAP / KAYIT OL")
         auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True, label_visibility="collapsed")
         user_input = st.text_input("Kullanıcı Adı")
         pass_input = st.text_input("Şifre", type="password")
@@ -279,9 +278,8 @@ with st.sidebar:
             else:
                 st.warning("Lütfen alanları doldurun.")
     else:
-        # Hoş geldin başlığı da estetik hale getirildi
-        st.markdown(f"<h3 style='font-weight: 700; color: #ffffff; margin-bottom: 5px; font-size: 1.3rem;'>👋 Hoş geldin, <span style='color: #E50914;'>{st.session_state.username}</span></h3>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #a0aec0; font-size: 0.9rem;'>Favorilerini üst menüdeki <b>Favorilerim</b> sekmesinden görebilirsin.</p>", unsafe_allow_html=True)
+        st.markdown(f"### 👋 Hoş geldin, **{st.session_state.username}**")
+        st.info("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
         if st.button("🚪 Çıkış Yap"):
             if "session_token" in st.session_state:
                 destroy_session(st.session_state.session_token)
@@ -427,8 +425,8 @@ def render_scrollable_strip(title: str, items: list):
     .action-btn {{ padding: 6px 10px; border-radius: 4px; text-decoration: none !important; font-size: 0.7rem; font-weight: bold; width: 85%; text-align: center; box-sizing: border-box; }}
     .btn-red {{ background: #E50914; color: white !important; }}
     .btn-dark {{ background: transparent; border: 1px solid white; color: white !important; }}
-    .btn-fav-add {{ background: transparent; border: 1px solid #ff3366; color: #ff3366 !important; }}
-    .btn-fav-remove {{ background: #ff3366; color: white !important; border: none; }}
+    .btn-fav-add {{ background: transparent; border: 1px solid #ff3366; color: #ff3366 !important; cursor: pointer; }}
+    .btn-fav-remove {{ background: #ff3366; color: white !important; border: none; cursor: pointer; }}
     </style>
     </head>
     <body>
@@ -442,7 +440,6 @@ def render_scrollable_strip(title: str, items: list):
     <div id="{container_id}" class="scroll-container">
     """
 
-    # Hangi kullanıcının aktif olduğunu HTML içindeki URL'ye eklemek için
     current_session = st.session_state.get("session_token", "")
 
     for row in items:
@@ -459,12 +456,11 @@ def render_scrollable_strip(title: str, items: list):
         imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
         
-        # Favori Butonu HTML Oluşturma
-        fav_btn = ""
+        # JAVASCRIPT ÇÖZÜMÜ: Tıklanınca ana pencerenin(top window) URL parametrelerini günceller.
         if str(tmdb_id) in user_favs_set:
-            fav_btn = f'<a href="?session={current_session}&action=remove_fav&id={tmdb_id}" target="_top" class="action-btn btn-fav-remove">💔 Kaldır</a>'
+            fav_btn = f'<a href="#" onclick="window.top.location.search=\'?session={current_session}&action=remove_fav&id={tmdb_id}\'; return false;" class="action-btn btn-fav-remove">💔 Kaldır</a>'
         else:
-            fav_btn = f'<a href="?session={current_session}&action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}" target="_top" class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
+            fav_btn = f'<a href="#" onclick="window.top.location.search=\'?session={current_session}&action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}\'; return false;" class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
 
         html_content += f"""
         <div class="movie-card">
