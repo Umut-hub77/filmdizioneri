@@ -291,6 +291,27 @@ def render_scrollable_strip(title: str, items: list):
     .action-btn {{ padding: 8px 15px; border-radius: 4px; color: white !important; text-decoration: none !important; font-size: 0.75rem; font-weight: bold; width: 80%; text-align: center; }}
     .btn-red {{ background: #E50914; }}
     .btn-dark {{ background: transparent; border: 1px solid white; }}
+    /* Butonu İnceltme */
+button[kind="secondary"] {
+    padding: 12px 0 !important; 
+    font-size: 1.1rem !important;
+}
+
+/* Format Kısmı Radio Görünümünü Düzeltme */
+div[data-testid="stRadio"] div[role="radiogroup"] {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 20px !important;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] > label {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] {
+    border-bottom: 2px solid #ffffff !important;
+}
     </style>
     </head>
     <body>
