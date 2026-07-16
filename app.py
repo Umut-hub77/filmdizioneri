@@ -345,41 +345,33 @@ def render_scrollable_strip(title: str, items: list):
 
 
 
-# Modern SVG Logo ve Alt Başlık (Galatasaray Tarzı İç İçe Geçmiş N ve W)
+# Modern SVG Logo - Neon Akış (Neon Stream) Konsepti
 logo_svg = """
 <svg width="340" height="60" viewBox="0 0 340 60" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Kırmızı Degrade (3D Hissi İçin) -->
-    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff1a1a" />
-      <stop offset="100%" stop-color="#b30000" />
+    <!-- Canlı Kırmızı Degrade (Enerji ve Derinlik) -->
+    <linearGradient id="glowRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff3366" />
+      <stop offset="50%" stop-color="#E50914" />
+      <stop offset="100%" stop-color="#8a0000" />
     </linearGradient>
     <!-- Neon Gölge Efekti -->
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#E50914" flood-opacity="0.4"/>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#E50914" flood-opacity="0.55"/>
     </filter>
   </defs>
 
-  <!-- 1. BUTON ARKA PLANI (Kırmızı Yuvarlatılmış Kutu) -->
-  <g filter="url(#glow)">
-    <rect x="2" y="6" width="56" height="40" rx="10" fill="url(#brandGrad)" />
-  </g>
-
-  <!-- 2. N VE W HARFLERİ (İç İçe Geçme İllüzyonu) -->
-  <!-- Önce Beyaz N Harfini Çiziyoruz -->
-  <path d="M 12 38 L 12 14 L 32 38 L 32 14" stroke="#ffffff" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- KESKİN BEYAZ 'N' HARFİ -->
+  <path d="M 12 44 L 12 18 L 30 44 L 30 18" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
   
-  <!-- Siyah W Harfini N'nin Üzerine Çiziyoruz (Sol ve Sağ Kesişimlerde Siyah Üstte) -->
-  <path d="M 10 14 L 18 38 L 25 22 L 32 38 L 40 14" stroke="#121212" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- NEON KIRMIZI 'W' HARFİ (N ile iç içe başlayıp akıp gidiyor) -->
+  <path d="M 30 26 L 38 44 L 46 26 L 54 44 L 62 18" fill="none" stroke="url(#glowRed)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)"/>
   
-  <!-- N'nin Orta Çapraz Çizgisinin Ufak Bir Kısmını Tekrar Çiziyoruz (Tam ortada Beyaz Siyahın üstüne çıkar, iç içe geçme tamamlanır) -->
-  <line x1="21" y1="24.8" x2="25" y2="29.6" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <!-- GİZLİ OYNAT (PLAY) İKONU (W'nin orta boşluğuna yerleştirilmiş) -->
+  <polygon points="42,15 42,23 49,19" fill="#ffffff" />
 
-  <!-- 3. SKIP NEXT ÇİZGİSİ (Butonun sağındaki 'Sonraki' çizgisi) -->
-  <rect x="44" y="14" width="4" height="24" rx="2" fill="#ffffff" />
-
-  <!-- 4. LOGO METNİ -->
-  <text x="68" y="36" font-family="'Montserrat', sans-serif" font-size="30" font-weight="900" fill="#ffffff" letter-spacing="-1.0">
+  <!-- LOGO METNİ -->
+  <text x="76" y="38" font-family="'Montserrat', sans-serif" font-size="28" font-weight="900" fill="#ffffff" letter-spacing="-0.5">
     Next<tspan fill="#E50914">Watch</tspan>
   </text>
 </svg>
