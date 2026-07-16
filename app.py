@@ -395,17 +395,26 @@ def render_scrollable_strip(title: str, items: list):
         safe_baslik = urllib.parse.quote(baslik)
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         m_type_guess = 'movie' if 'title' in row else 'tv'
-        
+
         imdb_id = get_imdb_id(tmdb_id, m_type_guess)
         imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
-        
-        # Favori Butonu HTML Oluşturma (sadece giriş yapılmışsa çalışır)
-            fav_btn = ""
+
+        # Favori Butonu HTML Oluşturma (sadece giriş yapılmışsa görünür/işlevseldir)
+        # NOT: target="_top" -> iframe içindeki link, Streamlit sayfasının tamamını
+        # (üst pencereyi) yönlendirir. JS ile window.top.location değiştirmek yerine
+        # native <a> linki kullanmak, tarayıcının sandbox/iframe kısıtlamalarına takılmaz.
         if str(tmdb_id) in user_favs_set:
-            fav_btn = f'<a href="?session={current_session}&action=remove_fav&id={tmdb_id}" target="_top" class="action-btn btn-fav-remove">❌ Listeden Çıkar</a>'
+            fav_btn = (
+                f'<a href="?action=remove_fav&id={tmdb_id}" target="_top" '
+                f'class="action-btn btn-fav-remove">❌ Favoriden Çıkar</a>'
+            )
         else:
-            fav_btn = f'<a href="?session={current_session}&action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}" target="_top" class="action-btn btn-fav-add">📌 Listeye Ekle</a>'
+            fav_btn = (
+                f'<a href="?action=add_fav&id={tmdb_id}&title={safe_baslik}'
+                f'&type={m_type_guess}&poster={poster_path}" target="_top" '
+                f'class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
+            )
 
         html_content += f"""
         <div class="movie-card">
@@ -611,4 +620,3 @@ else:
                         genre_name = genre['name']
                         category_items = get_tmdb_discover_by_genre(genre_id, TMDB_API_KEY, media_type, limit=15)
                         render_scrollable_strip(f"En İyi {genre_name} Yapımları", category_items)
-    
