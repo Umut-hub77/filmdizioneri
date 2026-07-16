@@ -230,7 +230,7 @@ with st.sidebar:
     else:
         st.markdown(f"### 👋 Hoş geldin, **{st.session_state.username}**")
         st.markdown("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
-        if st.button("🚪 Çıkış Yap"):
+        if st.button("Çıkış Yap"):
             st.session_state.logged_in = False
             st.session_state.username = ""
             st.rerun()
