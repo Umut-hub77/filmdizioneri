@@ -22,10 +22,6 @@ except Exception:
 
 st.set_page_config(page_title="NextWatch", page_icon=_page_icon, layout="wide")
 
-# GÜVENLİK NOTU: API anahtarını kaynak kodun içine gömmek yerine
-# .streamlit/secrets.toml dosyasına koyup st.secrets ile okuyun.
-# Örnek secrets.toml içeriği: TMDB_API_KEY = "xxxx"
-# Böylece repo public olsa bile anahtar sızmaz.
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "10e5fa6138c11560285b0c8af67e1376")
 DB_PATH = "nextwatch.db"
 MIN_PASSWORD_LEN = 6
@@ -627,102 +623,102 @@ def render_center_navigation():
     bg_style = f"background-image: url('data:image/png;base64,{pic}'); background-size: cover;" if pic else ""
     initial = "" if pic else ("👤" if not st.session_state.logged_in else st.session_state.username[0].upper())
 
+    # DİKKAT: Aşağıdaki f""" """ bloğunun içindeki kodların en solda (boşluksuz) durması çok önemli!
     html_code = f"""
-    <style>
-    .center-nav-wrapper {{
-        position: fixed;
-        top: 25px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 99999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }}
-    #nav-toggle {{ display: none; }}
-    
-    /* Ortadaki Profil Butonu */
-    .profile-btn-center {{
-        width: 65px;
-        height: 65px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #E50914, #a8050d);
-        {bg_style}
-        border: 3px solid #141414;
-        box-shadow: 0 0 15px rgba(229,9,20,0.6);
-        cursor: pointer;
-        z-index: 10000;
-        position: relative;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: bold;
-        font-size: 26px;
-    }}
-    .profile-btn-center:hover {{
-        transform: scale(1.05);
-        box-shadow: 0 0 25px rgba(229,9,20,0.9);
-    }}
-    
-    /* Tıklandığında Profil Butonunun Küçülmesi */
-    #nav-toggle:checked ~ label .profile-btn-center {{
-        transform: scale(0.85);
-        box-shadow: 0 0 20px rgba(229,9,20,0.8);
-        border-color: #E50914;
-    }}
-    
-    /* Sağ ve Sol Menü Başlıkları */
-    .nav-menu-item {{
-        position: absolute;
-        top: 50%;
-        background: rgba(20, 20, 20, 0.95);
-        border: 1px solid #E50914;
-        color: white !important;
-        text-decoration: none !important;
-        padding: 10px 20px;
-        border-radius: 25px;
-        font-family: 'Montserrat', sans-serif;
-        font-size: 14px;
-        font-weight: 700;
-        white-space: nowrap;
-        opacity: 0;
-        pointer-events: none;
-        transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); /* Yaylanma efekti */
-        z-index: 9998;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        left: 50%;
-        transform: translate(-50%, -50%);
-    }}
-    .nav-menu-item:hover {{
-        background: #E50914;
-        color: white !important;
-    }}
-    
-    /* Checkbox işaretlendiğinde (tıklandığında) öğelerin kayacağı yerler */
-    #nav-toggle:checked ~ .nav-item-l2 {{ opacity: 1; pointer-events: auto; transform: translate(-260px, -50%); }} /* En Sol */
-    #nav-toggle:checked ~ .nav-item-l1 {{ opacity: 1; pointer-events: auto; transform: translate(-140px, -50%); }} /* Orta Sol */
-    #nav-toggle:checked ~ .nav-item-r1 {{ opacity: 1; pointer-events: auto; transform: translate(50px, -50%); }}   /* Orta Sağ */
-    #nav-toggle:checked ~ .nav-item-r2 {{ opacity: 1; pointer-events: auto; transform: translate(170px, -50%); }}  /* En Sağ */
-    </style>
-    
-    <div class="center-nav-wrapper">
-        <input type="checkbox" id="nav-toggle">
-        
-        <a href="?secim=Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>
-        <a href="?secim=Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>
-        
-        <label for="nav-toggle">
-            <div class="profile-btn-center">{initial}</div>
-        </label>
-        
-        <a href="?secim=Favorilerim" target="_self" class="nav-menu-item nav-item-r1">❤️ Favoriler</a>
-        <a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r2">👤 Hesabım</a>
-    </div>
-    """
-    st.markdown(html_code, unsafe_allow_html=True)
+<style>
+.center-nav-wrapper {{
+    position: fixed;
+    top: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}}
+#nav-toggle {{ display: none; }}
 
+/* Ortadaki Profil Butonu */
+.profile-btn-center {{
+    width: 65px;
+    height: 65px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #E50914, #a8050d);
+    {bg_style}
+    border: 3px solid #141414;
+    box-shadow: 0 0 15px rgba(229,9,20,0.6);
+    cursor: pointer;
+    z-index: 10000;
+    position: relative;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 26px;
+}}
+.profile-btn-center:hover {{
+    transform: scale(1.05);
+    box-shadow: 0 0 25px rgba(229,9,20,0.9);
+}}
+
+/* Tıklandığında Profil Butonunun Küçülmesi */
+#nav-toggle:checked ~ label .profile-btn-center {{
+    transform: scale(0.85);
+    box-shadow: 0 0 20px rgba(229,9,20,0.8);
+    border-color: #E50914;
+}}
+
+/* Sağ ve Sol Menü Başlıkları */
+.nav-menu-item {{
+    position: absolute;
+    top: 50%;
+    background: rgba(20, 20, 20, 0.95);
+    border: 1px solid #E50914;
+    color: white !important;
+    text-decoration: none !important;
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); /* Yaylanma efekti */
+    z-index: 9998;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    left: 50%;
+    transform: translate(-50%, -50%);
+}}
+.nav-menu-item:hover {{
+    background: #E50914;
+    color: white !important;
+}}
+
+/* Checkbox işaretlendiğinde öğelerin kayacağı yerler */
+#nav-toggle:checked ~ .nav-item-l2 {{ opacity: 1; pointer-events: auto; transform: translate(-260px, -50%); }} 
+#nav-toggle:checked ~ .nav-item-l1 {{ opacity: 1; pointer-events: auto; transform: translate(-140px, -50%); }} 
+#nav-toggle:checked ~ .nav-item-r1 {{ opacity: 1; pointer-events: auto; transform: translate(50px, -50%); }}   
+#nav-toggle:checked ~ .nav-item-r2 {{ opacity: 1; pointer-events: auto; transform: translate(170px, -50%); }}  
+</style>
+
+<div class="center-nav-wrapper">
+    <input type="checkbox" id="nav-toggle">
+    
+    <a href="?secim=Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>
+    <a href="?secim=Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>
+    
+    <label for="nav-toggle">
+        <div class="profile-btn-center">{initial}</div>
+    </label>
+    
+    <a href="?secim=Favorilerim" target="_self" class="nav-menu-item nav-item-r1">❤️ Favoriler</a>
+    <a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r2">👤 Hesabım</a>
+</div>
+"""
+    st.markdown(html_code, unsafe_allow_html=True)
 
 if "secim" not in st.session_state:
     st.session_state.secim = "Film"
