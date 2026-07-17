@@ -636,8 +636,7 @@ def render_center_navigation():
     bg_style = f"background-image: url('data:image/png;base64,{pic}'); background-size: cover;" if pic else ""
     initial = "" if pic else ("👤" if not st.session_state.logged_in else st.session_state.username[0].upper())
 
-    # HTML/CSS kodunu editörün otomatik boşluklarına takılmaması için 
-    # Python'da tek parça string blokları halinde birleştiriyoruz.
+    # Buton sayısı 6'ya çıkarıldı ve genişlikleri (translate) birbiriyle çakışmayacak şekilde düzenlendi
     html_code = (
         '<div class="center-nav-wrapper"><style>'
         '.center-nav-wrapper { position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; align-items: center; justify-content: center; } '
@@ -647,17 +646,21 @@ def render_center_navigation():
         '#nav-toggle:checked ~ label .profile-btn-center { transform: scale(0.85); box-shadow: 0 0 20px rgba(229,9,20,0.8); border-color: #E50914; } '
         '.nav-menu-item { position: absolute; top: 50%; background: rgba(20, 20, 20, 0.95); border: 1px solid #E50914; color: white !important; text-decoration: none !important; padding: 10px 20px; border-radius: 25px; font-family: "Montserrat", sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 9998; box-shadow: 0 4px 10px rgba(0,0,0,0.5); left: 50%; transform: translate(-50%, -50%); } '
         '.nav-menu-item:hover { background: #E50914; color: white !important; } '
-        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-260px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-140px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(50px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(170px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-360px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-240px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-130px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(150px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(290px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(415px, -50%); } '
         '</style>'
         '<input type="checkbox" id="nav-toggle">'
+        '<a href="?secim=Belgesel" target="_self" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
         '<a href="?secim=Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>'
         '<a href="?secim=Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
         '<label for="nav-toggle"><div class="profile-btn-center">' + initial + '</div></label>'
-        '<a href="?secim=Favorilerim" target="_self" class="nav-menu-item nav-item-r1">❤️ Favoriler</a>'
-        '<a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r2">👤 Hesabım</a>'
+        '<a href="?secim=Ne İzlesem%3F" target="_self" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
+        '<a href="?secim=Favorilerim" target="_self" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
+        '<a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
         '</div>'
     )
     
@@ -676,16 +679,12 @@ render_center_navigation()
 
 secim = st.session_state.secim
 media_type = 'tv' if secim == "Dizi" else 'movie'
-if "secim" not in st.session_state:
-    st.session_state.secim = "Film"
-
-
 
 # --- FAVORİLERİM SEKMESİ ---
 if secim == "Favorilerim":
     st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
     if not st.session_state.logged_in:
-        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için sağ üstten giriş yapmalısınız.")
+        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için profil menüsünden giriş yapmalısınız.")
     else:
         fav_data = get_favorites(st.session_state.username)
         if not fav_data:
@@ -694,26 +693,90 @@ if secim == "Favorilerim":
             fav_items = [{"id": row[0], "title": row[1], "poster_path": row[3]} for row in fav_data]
             render_scrollable_strip(f"{st.session_state.username} adlı kullanıcının Favorileri", fav_items)
 
-# --- NE İZLESEM SEKMESİ ---
-elif secim == "Ne İzlesem?":
-    st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
-    st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
+# --- HESABIM SEKMESİ --- (Eksik olan kısım burasıydı)
+elif secim == "Hesabım":
+    st.markdown("<h2 style='font-weight: 700; text-align:center;'>HESAP YÖNETİMİ</h2>", unsafe_allow_html=True)
+    st.write("")
+    
+    if not st.session_state.logged_in:
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.info("Profilinizi yönetmek için lütfen giriş yapın.")
+            auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True)
+            user_input = st.text_input("Kullanıcı Adı").strip()
+            pass_input = st.text_input("Şifre", type="password")
 
-    if "tur_tipi" not in st.session_state:
-        st.session_state.tur_tipi = "Film"
-    st.markdown("<p style='color:#8c8c8c; font-weight:600; font-size:0.85rem; text-transform:uppercase;'>Format</p>", unsafe_allow_html=True)
+            if st.button("Onayla", type="primary", use_container_width=True):
+                if not user_input or not pass_input:
+                    st.warning("Lütfen alanları doldurun.")
+                elif auth_mode == "Kayıt Ol" and len(pass_input) < MIN_PASSWORD_LEN:
+                    st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
+                elif auth_mode == "Kayıt Ol":
+                    if add_user(user_input, pass_input):
+                        st.success("Hesap oluşturuldu! Şimdi giriş yapabilirsiniz.")
+                    else:
+                        st.error("Bu kullanıcı adı zaten alınmış!")
+                else:
+                    if login_user(user_input, pass_input):
+                        st.session_state.logged_in = True
+                        st.session_state.username = user_input
+                        st.rerun()
+                    else:
+                        st.error("Kullanıcı adı veya şifre hatalı!")
+    else:
+        user_details = get_user_details(st.session_state.username)
+        pic = get_profile_pic(st.session_state.username)
+        
+        # Profil Fotoğrafını Merkeze Yerleştirme
+        col_img1, col_img2, col_img3 = st.columns([1.5, 1, 1.5])
+        with col_img2:
+            if pic:
+                st.markdown(f'''
+                    <div style="display:flex; justify-content:center; align-items:center; flex-direction:column; margin-bottom:20px;">
+                        <img src="data:image/png;base64,{pic}" style="width:140px; height:140px; border-radius:50%; object-fit:cover; border: 3px solid #E50914; box-shadow: 0 0 20px rgba(229,9,20,0.4);">
+                        <h3 style="margin-top:15px; margin-bottom:0;">{st.session_state.username}</h3>
+                    </div>
+                ''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'''
+                    <div style="display:flex; justify-content:center; align-items:center; flex-direction:column; margin-bottom:20px;">
+                        <div style="width:140px; height:140px; border-radius:50%; background:#141414; display:flex; justify-content:center; align-items:center; border: 3px solid #E50914; box-shadow: 0 0 20px rgba(229,9,20,0.4); font-size: 50px;">👤</div>
+                        <h3 style="margin-top:15px; margin-bottom:0;">{st.session_state.username}</h3>
+                    </div>
+                ''', unsafe_allow_html=True)
 
-    fcol1, fcol2, _spacer = st.columns([1, 1, 4])
-    with fcol1:
-        if st.button("Film", key="format_film", use_container_width=True,
-                     type="primary" if st.session_state.tur_tipi == "Film" else "secondary"):
-            st.session_state.tur_tipi = "Film"
-            st.rerun()
-    with fcol2:
-        if st.button("Dizi", key="format_dizi", use_container_width=True,
-                     type="primary" if st.session_state.tur_tipi == "Dizi" else "secondary"):
-            st.session_state.tur_tipi = "Dizi"
-            st.rerun()
+        # Bilgi Güncelleme Formu
+        col_form1, col_form2, col_form3 = st.columns([1, 2, 1])
+        with col_form2:
+            with st.form("profil_guncelleme_formu"):
+                st.subheader("Kişisel Bilgiler")
+                new_email = st.text_input("E-Posta Adresi", value=user_details["email"], placeholder="ornek@mail.com")
+                new_phone = st.text_input("Telefon Numarası", value=user_details["phone"], placeholder="+90 555 555 5555")
+                
+                st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
+                uploaded_pic = st.file_uploader("Yeni Profil Fotoğrafı Yükle", type=["png", "jpg", "jpeg"])
+                
+                submit_btn = st.form_submit_button("Bilgileri Kaydet", type="primary")
+                
+                if submit_btn:
+                    update_user_details(st.session_state.username, new_email, new_phone)
+                    if uploaded_pic is not None:
+                        b64 = base64.b64encode(uploaded_pic.read()).decode()
+                        set_profile_pic(st.session_state.username, b64)
+                    st.success("Profilin başarıyla güncellendi!")
+                    st.rerun()
+            
+            if pic:
+                if st.button("Mevcut Fotoğrafı Kaldır", use_container_width=True):
+                    set_profile_pic(st.session_state.username, None)
+                    st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Çıkış Yap", type="secondary", use_container_width=True):
+                st.session_state.logged_in = False
+                st.session_state.username = ""
+                st.session_state.secim = "Film"
+                st.rerun()
 
     tur_tipi = st.session_state.tur_tipi
     m_type = "movie" if tur_tipi == "Film" else "tv"
