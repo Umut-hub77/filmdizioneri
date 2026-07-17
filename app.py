@@ -637,7 +637,7 @@ def render_center_navigation():
     bg_style = f"background-image: url('data:image/png;base64,{pic}'); background-size: cover;" if pic else ""
     initial = "" if pic else ("👤" if not st.session_state.logged_in else st.session_state.username[0].upper())
 
-    # Saf href mantığı. Aralıklar çakışmayacak şekilde (120, 220, 340 vb.) simetrik düzenlendi.
+    # Buton aralıkları tamamen simetrik ve çakışmayacak şekilde uzaklaştırıldı
     html_code = (
         '<div class="center-nav-wrapper"><style>'
         '.center-nav-wrapper { position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; align-items: center; justify-content: center; } '
@@ -647,12 +647,12 @@ def render_center_navigation():
         '#nav-toggle:checked ~ label .profile-btn-center { transform: scale(0.85); box-shadow: 0 0 20px rgba(229,9,20,0.8); border-color: #E50914; } '
         '.nav-menu-item { position: absolute; top: 50%; background: rgba(20, 20, 20, 0.95); border: 1px solid #E50914; color: white !important; text-decoration: none !important; padding: 10px 20px; border-radius: 25px; font-family: "Montserrat", sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 9998; box-shadow: 0 4px 10px rgba(0,0,0,0.5); left: 50%; transform: translate(-50%, -50%); } '
         '.nav-menu-item:hover { background: #E50914; color: white !important; } '
-        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-340px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-220px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-360px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-230px, -50%); } '
         '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-120px, -50%); } '
         '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(150px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(290px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(415px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(295px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(425px, -50%); } '
         '</style>'
         '<input type="checkbox" id="nav-toggle">'
         '<a href="?secim=Belgesel" target="_self" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
@@ -664,33 +664,35 @@ def render_center_navigation():
         '<a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
         '</div>'
     )
-    
     st.markdown(html_code, unsafe_allow_html=True)
+
 
 if "secim" not in st.session_state:
     st.session_state.secim = "Film"
 
-# Animasyonlu menüden gelen tıklamaları (URL parametrelerini) temiz bir şekilde yakala
+# ÇIKIŞ YAPMA SORUNUNU ÇÖZEN KISIM (st.rerun eklendi)
 if "secim" in st.query_params:
     gelen_secim = st.query_params["secim"]
-    
-    # URL hatası vermemesi için "Ne İzlesem?" eşleştirmesini burada manuel yapıyoruz
     if gelen_secim == "NeIzlesem":
         st.session_state.secim = "Ne İzlesem?"
     else:
         st.session_state.secim = gelen_secim
         
     st.query_params.clear()
+    st.rerun()  # Bunu eklemezsek URL temizlenirken oturum kapanıyor!
 
 render_center_navigation()
 
 secim = st.session_state.secim
 media_type = 'tv' if secim == "Dizi" else 'movie'
-# --- FAVORİLERİM SEKMESİ ---
+
+# ---------------------------------------------------------
+# 1. FAVORİLERİM SEKMESİ
+# ---------------------------------------------------------
 if secim == "Favorilerim":
     st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
     if not st.session_state.logged_in:
-        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için profil menüsünden giriş yapmalısınız.")
+        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için sağ menüden giriş yapmalısınız.")
     else:
         fav_data = get_favorites(st.session_state.username)
         if not fav_data:
@@ -699,7 +701,9 @@ if secim == "Favorilerim":
             fav_items = [{"id": row[0], "title": row[1], "poster_path": row[3]} for row in fav_data]
             render_scrollable_strip(f"{st.session_state.username} adlı kullanıcının Favorileri", fav_items)
 
-# --- HESABIM SEKMESİ --- (Eksik olan kısım burasıydı)
+# ---------------------------------------------------------
+# 2. HESABIM SEKMESİ
+# ---------------------------------------------------------
 elif secim == "Hesabım":
     st.markdown("<h2 style='font-weight: 700; text-align:center;'>HESAP YÖNETİMİ</h2>", unsafe_allow_html=True)
     st.write("")
@@ -733,7 +737,6 @@ elif secim == "Hesabım":
         user_details = get_user_details(st.session_state.username)
         pic = get_profile_pic(st.session_state.username)
         
-        # Profil Fotoğrafını Merkeze Yerleştirme
         col_img1, col_img2, col_img3 = st.columns([1.5, 1, 1.5])
         with col_img2:
             if pic:
@@ -751,20 +754,16 @@ elif secim == "Hesabım":
                     </div>
                 ''', unsafe_allow_html=True)
 
-        # Bilgi Güncelleme Formu
         col_form1, col_form2, col_form3 = st.columns([1, 2, 1])
         with col_form2:
             with st.form("profil_guncelleme_formu"):
                 st.subheader("Kişisel Bilgiler")
                 new_email = st.text_input("E-Posta Adresi", value=user_details["email"], placeholder="ornek@mail.com")
                 new_phone = st.text_input("Telefon Numarası", value=user_details["phone"], placeholder="+90 555 555 5555")
-                
                 st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
                 uploaded_pic = st.file_uploader("Yeni Profil Fotoğrafı Yükle", type=["png", "jpg", "jpeg"])
                 
-                submit_btn = st.form_submit_button("Bilgileri Kaydet", type="primary")
-                
-                if submit_btn:
+                if st.form_submit_button("Bilgileri Kaydet", type="primary"):
                     update_user_details(st.session_state.username, new_email, new_phone)
                     if uploaded_pic is not None:
                         b64 = base64.b64encode(uploaded_pic.read()).decode()
@@ -783,6 +782,29 @@ elif secim == "Hesabım":
                 st.session_state.username = ""
                 st.session_state.secim = "Film"
                 st.rerun()
+
+# ---------------------------------------------------------
+# 3. NE İZLESEM SEKMESİ (Hesabım'dan ayrıldı ve düzeltildi)
+# ---------------------------------------------------------
+elif secim == "Ne İzlesem?":
+    st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
+    st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
+
+    if "tur_tipi" not in st.session_state:
+        st.session_state.tur_tipi = "Film"
+    st.markdown("<p style='color:#8c8c8c; font-weight:600; font-size:0.85rem; text-transform:uppercase;'>Format</p>", unsafe_allow_html=True)
+
+    fcol1, fcol2, _spacer = st.columns([1, 1, 4])
+    with fcol1:
+        if st.button("Film", key="format_film", use_container_width=True,
+                     type="primary" if st.session_state.tur_tipi == "Film" else "secondary"):
+            st.session_state.tur_tipi = "Film"
+            st.rerun()
+    with fcol2:
+        if st.button("Dizi", key="format_dizi", use_container_width=True,
+                     type="primary" if st.session_state.tur_tipi == "Dizi" else "secondary"):
+            st.session_state.tur_tipi = "Dizi"
+            st.rerun()
 
     tur_tipi = st.session_state.tur_tipi
     m_type = "movie" if tur_tipi == "Film" else "tv"
@@ -825,7 +847,9 @@ elif secim == "Hesabım":
         else:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
-# --- FİLM / DİZİ / BELGESEL KEŞİF ve ARAMA ---
+# ---------------------------------------------------------
+# 4. FİLM / DİZİ / BELGESEL KEŞİF ve ARAMA (ANA SAYFA)
+# ---------------------------------------------------------
 else:
     search_query = st.text_input("Arama", placeholder="🔍 Ne izlemek istiyorsunuz? (Örn. Matrix)").strip()
 
