@@ -133,9 +133,6 @@ if "logged_in" not in st.session_state:
 if "secim" not in st.session_state:
     st.session_state.secim = "Film"
 
-# Ne izlesem sekmesindeki Film/Dizi seçimi için hafıza (HATAYI ÇÖZEN KISIM)
-if "tur_tipi" not in st.session_state:
-    st.session_state.tur_tipi = "Film"
     
 # --- URL PARAMETRELERİ İLE HTML'DEN TETİKLENEN FAVORİ İŞLEMLERİ ---
 if "action" in st.query_params:
@@ -781,9 +778,6 @@ elif secim == "Hesabım":
                 st.session_state.username = ""
                 st.session_state.secim = "Film"
                 st.rerun()
-
-    tur_tipi = st.session_state.tur_tipi
-    m_type = "movie" if tur_tipi == "Film" else "tv"
 
     genres = get_tmdb_genres(TMDB_API_KEY, m_type)
     genre_dict = {g['name']: str(g['id']) for g in genres}
