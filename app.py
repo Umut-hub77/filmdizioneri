@@ -490,30 +490,22 @@ def render_hero_poster(poster_url, trailer_key):
         cursor:pointer; background:#111; margin: 0 auto;
     }
     .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .2s; }
-    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; background:black; }
+    /* Siyah arka planı kaldırdık ki başlangıçta afişi kapatmasın */
+    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+    /* Sadece video oynarken aktif olacak sınıf */
+    .hero-video-box.active { pointer-events:auto; background:black; }
     .hero-video-box iframe { width:100%; height:100%; border:0; }
-    
-    /* Kullanıcıya tıklaması gerektiğini gösteren rozet */
-    .hero-badge {
-        position:absolute; bottom:15px; left:50%; transform:translateX(-50%);
-        background:rgba(229,9,20,0.85); color:#fff;
-        font-size:0.8rem; font-weight: 700; padding:8px 16px; border-radius:8px;
-        pointer-events:none; transition:opacity .3s;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    }
     </style></head><body>
     
     <div class="hero-poster" id="heroPoster">
         <img src="__POSTER_URL__" class="hero-img" id="heroImg">
         <div class="hero-video-box" id="heroVideoBox"></div>
-        __BADGE__
     </div>
 
     <script>
     var poster = document.getElementById('heroPoster');
     var img = document.getElementById('heroImg');
     var box = document.getElementById('heroVideoBox');
-    var badge = document.querySelector('.hero-badge');
     var trailerKey = "__TRAILER_KEY__";
     var isPlaying = false;
 
@@ -521,17 +513,17 @@ def render_hero_poster(poster_url, trailer_key):
         if (!trailerKey) return; // Fragman yoksa hiçbir şey yapma
         
         if (!isPlaying) {
-            // Tıklandığında afişi gizle, videoyu yerleştir ve başlat
+            // Tıklandığında video kutusunu aktif et, videoyu ekle ve afişi gizle
+            box.classList.add('active');
             box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
                 '?autoplay=1&controls=1&modestbranding=1&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
             img.style.opacity = '0';
-            if(badge) badge.style.opacity = '0'; // Rozeti gizle
             isPlaying = true;
         } else {
             // Tekrar tıklanırsa videoyu kapat, afişi geri getir
+            box.classList.remove('active');
             box.innerHTML = '';
             img.style.opacity = '1';
-            if(badge) badge.style.opacity = '1'; // Rozeti geri getir
             isPlaying = false;
         }
     });
@@ -539,12 +531,8 @@ def render_hero_poster(poster_url, trailer_key):
     </body></html>
     """
     
-    # Sadece fragman varsa rozeti oluştur
-    badge = '<div class="hero-badge">▶ Oynatmak İçin Tıkla</div>' if trailer_key else ''
-    
     html_out = (tpl.replace("__POSTER_URL__", poster_url)
-                   .replace("__TRAILER_KEY__", trailer_key or "")
-                   .replace("__BADGE__", badge))
+                   .replace("__TRAILER_KEY__", trailer_key or ""))
                    
     components.html(html_out, height=420, scrolling=False)
 
