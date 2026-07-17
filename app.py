@@ -655,13 +655,13 @@ def render_center_navigation():
         '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(425px, -50%); } '
         '</style>'
         '<input type="checkbox" id="nav-toggle">'
-        '<a href="?secim=Belgesel" target="_self" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
-        '<a href="?secim=Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>'
-        '<a href="?secim=Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
+        '<a href="#Belgesel" target="_self" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
+        '<a href="#Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>'
+        '<a href="#Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
         '<label for="nav-toggle"><div class="profile-btn-center">' + initial + '</div></label>'
-        '<a href="?secim=NeIzlesem" target="_self" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
-        '<a href="?secim=Favorilerim" target="_self" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
-        '<a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
+        '<a href="#NeIzlesem" target="_self" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
+        '<a href="#Favorilerim" target="_self" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
+        '<a href="#Hesabım" target="_self" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
         '</div>'
     )
     st.markdown(html_code, unsafe_allow_html=True)
@@ -669,18 +669,24 @@ def render_center_navigation():
 
 if "secim" not in st.session_state:
     st.session_state.secim = "Film"
+# --- SAYFA İÇİ YÖNLENDİRME (URL PARAMETRESİ YERİNE ANCHOR) ---
+# Streamlit anchor değişimini algılayıp seçim yapmak için
+js_code = """
+<script>
+    var hash = window.location.hash.substring(1);
+    if(hash) {
+        // Python'a haber vermek için gizli bir mesaj gönderiyoruz
+        window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'nav_hash', value: hash}, '*');
+    }
+</script>
+"""
+components.html(js_code, height=0)
 
-# ÇIKIŞ YAPMA SORUNUNU ÇÖZEN KISIM (st.rerun eklendi)
-if "secim" in st.query_params:
-    gelen_secim = st.query_params["secim"]
-    if gelen_secim == "NeIzlesem":
-        st.session_state.secim = "Ne İzlesem?"
-    else:
-        st.session_state.secim = gelen_secim
-        
-    st.query_params.clear()
-    st.rerun()  # Bunu eklemezsek URL temizlenirken oturum kapanıyor!
-
+# URL değişimi olduğunda bunu yakalayıp sayfayı sarsmadan güncelle
+if "nav_hash" in st.session_state and st.session_state.nav_hash:
+    st.session_state.secim = st.session_state.nav_hash
+    st.session_state.nav_hash = None # Değişkeni sıfırla
+    st.rerun()
 render_center_navigation()
 
 secim = st.session_state.secim
