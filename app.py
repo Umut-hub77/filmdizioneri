@@ -235,7 +235,7 @@ div[data-baseweb="input"]:focus-within {
 div[data-testid="stPopover"] {
     position: fixed !important;
     top: 15px !important;       /* Üstten mesafe */
-    left: 50% !important;       /* Yatayda ortaya al */
+    right: 50% !important;       /* Yatayda ortaya al */
     transform: translateX(-50%) !important; /* Tam merkeze hizala */
     z-index: 9999;
 }
