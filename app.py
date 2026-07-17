@@ -629,46 +629,50 @@ logo_svg = """
 
 st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
-# ==========================================
-# KAYARAK AÇILAN MERKEZİ MENÜ SİSTEMİ
-# ==========================================
 def render_center_navigation():
     pic = get_profile_pic(st.session_state.username) if st.session_state.logged_in else None
     bg_style = f"background-image: url('data:image/png;base64,{pic}'); background-size: cover;" if pic else ""
     initial = "" if pic else ("👤" if not st.session_state.logged_in else st.session_state.username[0].upper())
 
-    # Buton aralıkları tamamen simetrik ve çakışmayacak şekilde uzaklaştırıldı
+    # Butonlara tıklandığında Python'a "şu sekme seçildi" mesajı gönderiyoruz
     html_code = (
         '<div class="center-nav-wrapper"><style>'
         '.center-nav-wrapper { position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; align-items: center; justify-content: center; } '
         '#nav-toggle { display: none; } '
         '.profile-btn-center { width: 65px; height: 65px; border-radius: 50%; background: linear-gradient(135deg, #E50914, #a8050d); ' + bg_style + ' border: 3px solid #141414; box-shadow: 0 0 15px rgba(229,9,20,0.6); cursor: pointer; z-index: 10000; position: relative; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 26px; } '
-        '.profile-btn-center:hover { transform: scale(1.05); box-shadow: 0 0 25px rgba(229,9,20,0.9); } '
-        '#nav-toggle:checked ~ label .profile-btn-center { transform: scale(0.85); box-shadow: 0 0 20px rgba(229,9,20,0.8); border-color: #E50914; } '
-        '.nav-menu-item { position: absolute; top: 50%; background: rgba(20, 20, 20, 0.95); border: 1px solid #E50914; color: white !important; text-decoration: none !important; padding: 10px 20px; border-radius: 25px; font-family: "Montserrat", sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 9998; box-shadow: 0 4px 10px rgba(0,0,0,0.5); left: 50%; transform: translate(-50%, -50%); } '
-        '.nav-menu-item:hover { background: #E50914; color: white !important; } '
-        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-360px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-230px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-120px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(150px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(295px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(425px, -50%); } '
+        '.nav-menu-item { cursor: pointer; position: absolute; top: 50%; background: rgba(20, 20, 20, 0.95); border: 1px solid #E50914; color: white !important; text-decoration: none !important; padding: 10px 20px; border-radius: 25px; font-family: "Montserrat", sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.5s; z-index: 9998; box-shadow: 0 4px 10px rgba(0,0,0,0.5); left: 50%; transform: translate(-50%, -50%); } '
+        '.nav-menu-item:hover { background: #E50914; } '
+        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-330px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-220px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-110px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(140px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(250px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(360px, -50%); } '
         '</style>'
         '<input type="checkbox" id="nav-toggle">'
-        '<a href="#Belgesel" target="_self" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
-        '<a href="#Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>'
-        '<a href="#Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
+        # href yerine onclick ile Python'a mesaj gönderiyoruz
+        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Belgesel\'}}, \'*\')" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
+        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Film\'}}, \'*\')" class="nav-menu-item nav-item-l2">🎬 Film</a>'
+        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Dizi\'}}, \'*\')" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
         '<label for="nav-toggle"><div class="profile-btn-center">' + initial + '</div></label>'
-        '<a href="#NeIzlesem" target="_self" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
-        '<a href="#Favorilerim" target="_self" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
-        '<a href="#Hesabım" target="_self" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
+        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Ne İzlesem?\'}}, \'*\')" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
+        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Favorilerim\'}}, \'*\')" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
+        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Hesabım\'}}, \'*\')" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
         '</div>'
     )
     st.markdown(html_code, unsafe_allow_html=True)
 
 
-if "secim" not in st.session_state:
-    st.session_state.secim = "Film"
+# Menüden gelen seçimi yakala
+if "secim" in st.session_state:
+    pass # Seçim zaten session_state içinde güncellenecek
+
+# Sayfayı render et
+render_center_navigation()
+
+# Seçimi kontrol et
+secim = st.session_state.get("secim", "Film")
+media_type = 'tv' if secim == "Dizi" else 'movie'
 # --- SAYFA İÇİ YÖNLENDİRME (URL PARAMETRESİ YERİNE ANCHOR) ---
 # Streamlit anchor değişimini algılayıp seçim yapmak için
 js_code = """
