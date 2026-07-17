@@ -8,6 +8,7 @@ import random
 import urllib.parse
 import sqlite3
 import hashlib
+import base64
 from contextlib import contextmanager
 from PIL import Image
 
@@ -27,6 +28,7 @@ st.set_page_config(page_title="NextWatch", page_icon=_page_icon, layout="wide")
 # Böylece repo public olsa bile anahtar sızmaz.
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "10e5fa6138c11560285b0c8af67e1376")
 DB_PATH = "nextwatch.db"
+MIN_PASSWORD_LEN = 6
 
 # ==========================================
 # VERİTABANI KATMANI (SQLite)
@@ -46,10 +48,15 @@ def get_db():
 def init_db():
     with get_db() as conn:
         c = conn.cursor()
-        c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
+        c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
         c.execute('''CREATE TABLE IF NOT EXISTS favorites
                      (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
                       UNIQUE(username, tmdb_id))''')
+        # Eski veritabanlarında profile_pic sütunu yoksa ekle (migration)
+        try:
+            c.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT')
+        except sqlite3.OperationalError:
+            pass  # sütun zaten var
 
 
 init_db()
@@ -78,6 +85,17 @@ def login_user(username: str, password: str) -> bool:
     with get_db() as conn:
         row = conn.execute('SELECT password FROM users WHERE username=?', (username,)).fetchone()
     return bool(row) and check_hashes(password, row[0])
+
+
+def get_profile_pic(username):
+    with get_db() as conn:
+        row = conn.execute('SELECT profile_pic FROM users WHERE username=?', (username,)).fetchone()
+    return row[0] if row and row[0] else None
+
+
+def set_profile_pic(username, b64_data):
+    with get_db() as conn:
+        conn.execute('UPDATE users SET profile_pic=? WHERE username=?', (b64_data, username))
 
 
 def add_favorite(username, tmdb_id, title, media_type, poster_path):
@@ -122,12 +140,12 @@ if "action" in st.query_params:
                 st.query_params.get("type"),
                 st.query_params.get("poster"),
             )
-            st.toast("❤️ Favorilere eklendi!")
+            st.toast("Favorilere eklendi!")
         elif action == "remove_fav":
             remove_favorite(st.session_state.username, fav_id)
-            st.toast("💔 Favorilerden çıkarıldı!")
+            st.toast("Favorilerden çıkarıldı!")
     else:
-        st.sidebar.warning("Favori işlemi için giriş yapmalısınız!")
+        st.warning("Favori işlemi için giriş yapmalısınız!")
 
     st.query_params.clear()
     st.rerun()
@@ -150,6 +168,10 @@ html, body, [class*="css"] { font-family: 'Montserrat', sans-serif !important; }
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
+
+/* Sidebar tamamen kaldırıldı, giriş/profil artık sağ üstte */
+section[data-testid="stSidebar"] { display: none !important; }
+div[data-testid="collapsedControl"] { display: none !important; }
 
 div[data-testid="stStatusWidget"], div[data-testid="stSpinner"], .stSpinner {
     display: none !important; visibility: hidden !important;
@@ -208,48 +230,115 @@ div[data-baseweb="input"] {
 div[data-baseweb="input"]:focus-within {
     border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important;
 }
+
+/* --- Sağ üst profil rozeti --- */
+div[data-testid="stPopover"] {
+    position: fixed !important;
+    top: 18px;
+    right: 28px;
+    z-index: 9999;
+}
+div[data-testid="stPopover"] > div > button {
+    width: 46px !important;
+    height: 46px !important;
+    min-width: 46px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+    background: linear-gradient(135deg, #E50914, #a8050d) !important;
+    border: 2px solid rgba(255,255,255,0.18) !important;
+    box-shadow: 0 0 14px rgba(229,9,20,0.55) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 1.05rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+}
+div[data-testid="stPopover"] > div > button:hover {
+    box-shadow: 0 0 22px rgba(229,9,20,0.85) !important;
+    transform: translateY(-1px);
+}
+
+/* --- Detay sayfası (Ne İzlesem?) aksiyon butonları --- */
+.hero-actions { display:flex; gap:14px; margin: 18px 0 6px 0; flex-wrap: wrap; }
+.hero-btn {
+    background: linear-gradient(135deg, #E50914, #a8050d);
+    color: #ffffff !important; text-decoration: none !important;
+    padding: 12px 26px; border-radius: 8px; font-weight: 700; font-size: 0.9rem;
+    letter-spacing: 0.4px; text-transform: uppercase;
+    box-shadow: 0 0 16px rgba(229,9,20,0.55);
+    transition: all 0.2s ease; display: inline-block;
+}
+.hero-btn:hover { box-shadow: 0 0 26px rgba(229,9,20,0.85); transform: translateY(-2px); }
+.hero-btn-active {
+    background: linear-gradient(135deg, #2b2b2b, #141414);
+    border: 1px solid #E50914; box-shadow: none;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ==========================================
-# SOL MENÜ - GİRİŞ / KAYIT
+# SAĞ ÜST PROFİL / GİRİŞ ROZETİ
 # ==========================================
-MIN_PASSWORD_LEN = 6
+def render_profile_corner():
+    # Profil fotoğrafı varsa, popover tetikleyici butonunun arka planına basıyoruz
+    if st.session_state.logged_in:
+        pic = get_profile_pic(st.session_state.username)
+        if pic:
+            st.markdown(f"""
+            <style>
+            div[data-testid="stPopover"] > div > button {{
+                background-image: url("data:image/png;base64,{pic}") !important;
+                background-size: cover !important;
+                background-position: center !important;
+                color: transparent !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
 
-with st.sidebar:
-    st.image(_page_icon, width=60)
-    if not st.session_state.logged_in:
-        st.markdown("### Giriş Yap / Kayıt Ol")
-        auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True)
-        user_input = st.text_input("Kullanıcı Adı").strip()
-        pass_input = st.text_input("Şifre", type="password")
+    trigger_label = "👤" if not st.session_state.logged_in else st.session_state.username[0].upper()
 
-        if st.button("Onayla", type="primary"):
-            if not user_input or not pass_input:
-                st.warning("Lütfen alanları doldurun.")
-            elif auth_mode == "Kayıt Ol" and len(pass_input) < MIN_PASSWORD_LEN:
-                st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
-            elif auth_mode == "Kayıt Ol":
-                if add_user(user_input, pass_input):
-                    st.success("Hesap oluşturuldu! Şimdi giriş yapabilirsiniz.")
+    with st.popover(trigger_label, use_container_width=False):
+        if not st.session_state.logged_in:
+            st.markdown("#### Giriş Yap / Kayıt Ol")
+            auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True, key="auth_mode_corner")
+            user_input = st.text_input("Kullanıcı Adı", key="user_corner").strip()
+            pass_input = st.text_input("Şifre", type="password", key="pass_corner")
+
+            if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
+                if not user_input or not pass_input:
+                    st.warning("Lütfen alanları doldurun.")
+                elif auth_mode == "Kayıt Ol" and len(pass_input) < MIN_PASSWORD_LEN:
+                    st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
+                elif auth_mode == "Kayıt Ol":
+                    if add_user(user_input, pass_input):
+                        st.success("Hesap oluşturuldu! Şimdi giriş yapabilirsiniz.")
+                    else:
+                        st.error("Bu kullanıcı adı zaten alınmış!")
                 else:
-                    st.error("Bu kullanıcı adı zaten alınmış!")
-            else:
-                if login_user(user_input, pass_input):
-                    st.session_state.logged_in = True
-                    st.session_state.username = user_input
-                    st.success("Giriş başarılı!")
-                    st.rerun()
-                else:
-                    st.error("Kullanıcı adı veya şifre hatalı!")
-    else:
-        st.markdown(f"### 👋 Hoş geldin, **{st.session_state.username}**")
-        st.markdown("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
-        if st.button("Çıkış Yap"):
-            st.session_state.logged_in = False
-            st.session_state.username = ""
-            st.rerun()
+                    if login_user(user_input, pass_input):
+                        st.session_state.logged_in = True
+                        st.session_state.username = user_input
+                        st.rerun()
+                    else:
+                        st.error("Kullanıcı adı veya şifre hatalı!")
+        else:
+            st.markdown(f"**{st.session_state.username}**")
+            uploaded = st.file_uploader("Profil fotoğrafı seç", type=["png", "jpg", "jpeg"], key="pfp_upload")
+            if uploaded is not None:
+                b64 = base64.b64encode(uploaded.read()).decode()
+                set_profile_pic(st.session_state.username, b64)
+                st.rerun()
+            st.caption("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
+            if st.button("Çıkış Yap", key="logout_corner", use_container_width=True):
+                st.session_state.logged_in = False
+                st.session_state.username = ""
+                st.rerun()
+
+
+render_profile_corner()
 
 
 # ==========================================
@@ -393,6 +482,87 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
 
 
 # ==========================================
+# NETFLIX TARZI HOVER'DA FRAGMAN OYNATAN POSTER
+# ==========================================
+def render_hero_poster(poster_url, trailer_key):
+    tpl = """
+    <!DOCTYPE html><html><head><style>
+    body { margin:0; padding:40px; background:transparent; overflow:visible; font-family:'Montserrat',sans-serif; }
+    .hero-wrap { display:flex; align-items:center; justify-content:center; }
+    .hero-poster {
+        position:relative; width:280px; height:400px; border-radius:10px; overflow:hidden;
+        transition: transform .4s ease, box-shadow .4s ease; cursor:pointer; background:#111;
+    }
+    .hero-poster.hero-hovered {
+        transform: scale(1.12);
+        box-shadow: 0 12px 45px rgba(229,9,20,0.55);
+        z-index: 10;
+    }
+    .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .25s ease; }
+    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; }
+    .hero-video-box iframe { width:100%; height:100%; border:0; pointer-events:none; }
+    .hero-badge {
+        position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.65); color:#fff;
+        font-size:0.65rem; padding:4px 9px; border-radius:4px; opacity:0; transition:opacity .3s;
+        pointer-events:none;
+    }
+    .hero-poster.hero-hovered .hero-badge { opacity:1; }
+    </style></head><body>
+    <div class="hero-wrap">
+      <div class="hero-poster" id="heroPoster">
+        <img src="__POSTER_URL__" class="hero-img" id="heroImg">
+        <div class="hero-video-box" id="heroVideoBox"></div>
+        __BADGE__
+      </div>
+    </div>
+    <script>
+    var poster = document.getElementById('heroPoster');
+    var img = document.getElementById('heroImg');
+    var box = document.getElementById('heroVideoBox');
+    var trailerKey = "__TRAILER_KEY__";
+    poster.addEventListener('mouseenter', function () {
+        poster.classList.add('hero-hovered');
+        if (trailerKey) {
+            box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
+                '?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=' + trailerKey +
+                '" allow="autoplay; encrypted-media" frameborder="0"></iframe>';
+            img.style.opacity = '0';
+        }
+    });
+    poster.addEventListener('mouseleave', function () {
+        poster.classList.remove('hero-hovered');
+        box.innerHTML = '';
+        img.style.opacity = '1';
+    });
+    </script>
+    </body></html>
+    """
+    badge = '<div class="hero-badge">Fragman için üzerine gel</div>' if trailer_key else ''
+    html_out = (tpl.replace("__POSTER_URL__", poster_url)
+                    .replace("__TRAILER_KEY__", trailer_key or "")
+                    .replace("__BADGE__", badge))
+    components.html(html_out, height=480, scrolling=False)
+
+
+def render_hero_actions(watch_link, imdb_link, tmdb_id, safe_title, m_type, poster_path, is_logged_in, is_fav):
+    fav_html = ""
+    if is_logged_in:
+        if is_fav:
+            fav_html = f'<a href="?action=remove_fav&id={tmdb_id}" class="hero-btn hero-btn-active">Favoriden Çıkar</a>'
+        else:
+            fav_html = (f'<a href="?action=add_fav&id={tmdb_id}&title={safe_title}&type={m_type}'
+                        f'&poster={poster_path}" class="hero-btn">Favoriye Ekle</a>')
+    html_out = f"""
+    <div class="hero-actions">
+      <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">İZLE</a>
+      <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">IMDb</a>
+      {fav_html}
+    </div>
+    """
+    st.markdown(html_out, unsafe_allow_html=True)
+
+
+# ==========================================
 # KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
 # ==========================================
 def render_scrollable_strip(title: str, items: list):
@@ -482,7 +652,7 @@ def render_scrollable_strip(title: str, items: list):
         <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
         <img src="{image_url}" class="poster-img">
         <div class="hover-overlay">
-        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">▶ NEREDE İZLERİM?</a>
+        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
         <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
         {fav_btn}
         </div>
@@ -539,9 +709,9 @@ media_type = 'tv' if secim == "Dizi" else 'movie'
 
 # --- FAVORİLERİM SEKMESİ ---
 if secim == "Favorilerim":
-    st.markdown("<h2 style='font-weight: 700;'>❤️ FAVORİLERİM</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
     if not st.session_state.logged_in:
-        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için sol menüden giriş yapmalısınız.")
+        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için sağ üstten giriş yapmalısınız.")
     else:
         fav_data = get_favorites(st.session_state.username)
         if not fav_data:
@@ -599,33 +769,16 @@ elif secim == "Ne İzlesem?":
 
             col1, col2 = st.columns([1, 2.5])
             with col1:
-                st.image(poster_url, use_container_width=True, clamp=True)
+                render_hero_poster(poster_url, trailer_key)
             with col2:
                 st.markdown(f"<h1 style='font-weight:700;'>{baslik} ({yil})</h1>", unsafe_allow_html=True)
                 st.markdown(f"**TMDb Puanı:** `{puan} / 10`")
                 st.markdown(f"<p style='line-height:1.6; color:#a0aec0;'>{ozet}</p>", unsafe_allow_html=True)
 
-                b1, b2, b3, b4 = st.columns([1.5, 1.5, 1.5, 2])
-                with b1:
-                    st.link_button("📍 NEREDE İZLERİM?", watch_link, use_container_width=True)
-                with b2:
-                    st.link_button("IMDb", imdb_link, use_container_width=True)
-
-                if st.session_state.logged_in:
-                    with b3:
-                        if str(tmdb_id) in user_favs_set:
-                            if st.button("💔 Favoriden Çıkar", use_container_width=True):
-                                remove_favorite(st.session_state.username, tmdb_id)
-                                st.rerun()
-                        else:
-                            if st.button("❤️ Favoriye Ekle", use_container_width=True):
-                                add_favorite(st.session_state.username, tmdb_id, baslik, m_type, chosen.get('poster_path'))
-                                st.rerun()
-
-                if trailer_key:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    with st.expander("🎬 Fragmanı İzle"):
-                        st.video(f"https://www.youtube.com/watch?v={trailer_key}")
+                render_hero_actions(
+                    watch_link, imdb_link, tmdb_id, safe_b, m_type, chosen.get('poster_path'),
+                    st.session_state.logged_in, str(tmdb_id) in user_favs_set
+                )
         else:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
