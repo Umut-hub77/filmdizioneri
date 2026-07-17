@@ -231,11 +231,12 @@ div[data-baseweb="input"]:focus-within {
     border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important;
 }
 
-/* --- Sağ üst profil rozeti --- */
+/* --- Sağ üstten ekranın üst-orta kısmına taşındı --- */
 div[data-testid="stPopover"] {
     position: fixed !important;
-    top: 18px;
-    right: 28px;
+    top: 15px !important;       /* Üstten mesafe */
+    left: 50% !important;       /* Yatayda ortaya al */
+    transform: translateX(-50%) !important; /* Tam merkeze hizala */
     z-index: 9999;
 }
 div[data-testid="stPopover"] > div > button {
