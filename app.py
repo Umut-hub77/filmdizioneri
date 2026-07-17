@@ -48,11 +48,13 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS favorites
                      (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
                       UNIQUE(username, tmdb_id))''')
-        # Eski veritabanlarında profile_pic sütunu yoksa ekle (migration)
-        try:
-            c.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT')
-        except sqlite3.OperationalError:
-            pass  # sütun zaten var
+        # Sütun güncellemeleri (Eski veri tabanına otomatik ekler)
+        try: c.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT')
+        except sqlite3.OperationalError: pass
+        try: c.execute('ALTER TABLE users ADD COLUMN email TEXT')
+        except sqlite3.OperationalError: pass
+        try: c.execute('ALTER TABLE users ADD COLUMN phone TEXT')
+        except sqlite3.OperationalError: pass
 
 
 init_db()
@@ -93,6 +95,14 @@ def set_profile_pic(username, b64_data):
     with get_db() as conn:
         conn.execute('UPDATE users SET profile_pic=? WHERE username=?', (b64_data, username))
 
+def get_user_details(username):
+    with get_db() as conn:
+        row = conn.execute('SELECT email, phone FROM users WHERE username=?', (username,)).fetchone()
+    return {"email": row[0] if row and row[0] else "", "phone": row[1] if row and row[1] else ""}
+
+def update_user_details(username, email, phone):
+    with get_db() as conn:
+        conn.execute('UPDATE users SET email=?, phone=? WHERE username=?', (email, phone, username))
 
 def add_favorite(username, tmdb_id, title, media_type, poster_path):
     try:
