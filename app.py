@@ -326,17 +326,24 @@ def render_profile_corner():
                     else:
                         st.error("Kullanıcı adı veya şifre hatalı!")
         else:
-            st.markdown(f"**{st.session_state.username}**")
-            uploaded = st.file_uploader("Profil fotoğrafı seç", type=["png", "jpg", "jpeg"], key="pfp_upload")
-            if uploaded is not None:
-                b64 = base64.b64encode(uploaded.read()).decode()
-                set_profile_pic(st.session_state.username, b64)
-                st.rerun()
-            st.caption("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
-            if st.button("Çıkış Yap", key="logout_corner", use_container_width=True):
-                st.session_state.logged_in = False
-                st.session_state.username = ""
-                st.rerun()
+            st.markdown(f"### Merhaba, **{st.session_state.username}**")
+            
+            # Sekmeler ile menü düzeni
+            tab1, tab2 = st.tabs(["👤 Profil & Ayarlar", "⚙️ Hesap"])
+            
+            with tab1:
+                uploaded = st.file_uploader("Profil fotoğrafını güncelle", type=["png", "jpg", "jpeg"], key="pfp_upload")
+                if uploaded:
+                    b64 = base64.b64encode(uploaded.read()).decode()
+                    set_profile_pic(st.session_state.username, b64)
+                    st.rerun()
+                st.caption("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
+            
+            with tab2:
+                if st.button("Çıkış Yap", key="logout_corner", use_container_width=True):
+                    st.session_state.logged_in = False
+                    st.session_state.username = ""
+                    st.rerun()
 
 
 render_profile_corner()
