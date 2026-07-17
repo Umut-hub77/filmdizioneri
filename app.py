@@ -630,38 +630,40 @@ logo_svg = """
 st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
 def render_center_navigation():
+    # 1. Profil Resmi ve Initial
     pic = get_profile_pic(st.session_state.username) if st.session_state.logged_in else None
     bg_style = f"background-image: url('data:image/png;base64,{pic}'); background-size: cover;" if pic else ""
     initial = "" if pic else ("👤" if not st.session_state.logged_in else st.session_state.username[0].upper())
 
-    # Butonlara tıklandığında Python'a "şu sekme seçildi" mesajı gönderiyoruz
-    html_code = (
-        '<div class="center-nav-wrapper"><style>'
-        '.center-nav-wrapper { position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; align-items: center; justify-content: center; } '
-        '#nav-toggle { display: none; } '
-        '.profile-btn-center { width: 65px; height: 65px; border-radius: 50%; background: linear-gradient(135deg, #E50914, #a8050d); ' + bg_style + ' border: 3px solid #141414; box-shadow: 0 0 15px rgba(229,9,20,0.6); cursor: pointer; z-index: 10000; position: relative; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 26px; } '
-        '.nav-menu-item { cursor: pointer; position: absolute; top: 50%; background: rgba(20, 20, 20, 0.95); border: 1px solid #E50914; color: white !important; text-decoration: none !important; padding: 10px 20px; border-radius: 25px; font-family: "Montserrat", sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.5s; z-index: 9998; box-shadow: 0 4px 10px rgba(0,0,0,0.5); left: 50%; transform: translate(-50%, -50%); } '
-        '.nav-menu-item:hover { background: #E50914; } '
-        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-330px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-220px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-110px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(140px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(250px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(360px, -50%); } '
-        '</style>'
-        '<input type="checkbox" id="nav-toggle">'
-        # href yerine onclick ile Python'a mesaj gönderiyoruz
-        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Belgesel\'}}, \'*\')" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
-        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Film\'}}, \'*\')" class="nav-menu-item nav-item-l2">🎬 Film</a>'
-        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Dizi\'}}, \'*\')" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
-        '<label for="nav-toggle"><div class="profile-btn-center">' + initial + '</div></label>'
-        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Ne İzlesem?\'}}, \'*\')" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
-        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Favorilerim\'}}, \'*\')" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
-        f'<a onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'secim\', value: \'Hesabım\'}}, \'*\')" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
-        '</div>'
-    )
-    st.markdown(html_code, unsafe_allow_html=True)
+    # 2. Menü Tasarımı
+    st.markdown("""
+    <style>
+    .center-nav-wrapper { position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; align-items: center; justify-content: center; }
+    .profile-btn-center { width: 65px; height: 65px; border-radius: 50%; background: linear-gradient(135deg, #E50914, #a8050d); """ + bg_style + """ border: 3px solid #141414; box-shadow: 0 0 15px rgba(229,9,20,0.6); cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 26px; }
+    </style>
+    """, unsafe_allow_html=True)
 
+    # 3. Streamlit Butonlarını Düzenle
+    # (Bu butonlar CSS ile yukarıdaki wrapper'ın içine konumlandırılacak)
+    cols = st.columns([1,1,1,1,1,1,1]) # 7 sütun
+    
+    with cols[0]:
+        if st.button("🌍 Belgesel"): st.session_state.secim = "Belgesel"; st.rerun()
+    with cols[1]:
+        if st.button("🎬 Film"): st.session_state.secim = "Film"; st.rerun()
+    with cols[2]:
+        if st.button("📺 Dizi"): st.session_state.secim = "Dizi"; st.rerun()
+    
+    with cols[3]:
+        # Ortadaki profil butonu (tıklayınca bir şey yapmasın, sadece estetik)
+        st.markdown(f'<div class="profile-btn-center">{initial}</div>', unsafe_allow_html=True)
+        
+    with cols[4]:
+        if st.button("🎲 Ne İzlesem?"): st.session_state.secim = "Ne İzlesem?"; st.rerun()
+    with cols[5]:
+        if st.button("❤️ Favoriler"): st.session_state.secim = "Favorilerim"; st.rerun()
+    with cols[6]:
+        if st.button("👤 Hesabım"): st.session_state.secim = "Hesabım"; st.rerun()
 
 # Menüden gelen seçimi yakala
 if "secim" in st.session_state:
