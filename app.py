@@ -481,129 +481,55 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
     return None
 
 
-# ==========================================
-# NETFLIX TARZI HOVER'DA FRAGMAN OYNATAN POSTER
-# ==========================================
-# ==========================================
-# NETFLIX TARZI HOVER/TIKLAMA İLE FRAGMAN OYNATAN POSTER
-# ==========================================
 def render_hero_poster(poster_url, trailer_key):
     tpl = """
     <!DOCTYPE html><html><head><style>
-    body { margin:0; padding:40px; background:transparent; overflow:visible; font-family:'Montserrat',sans-serif; }
-    .hero-wrap { display:flex; align-items:center; justify-content:center; }
+    body { margin:0; padding:0; background:transparent; overflow:visible; }
     .hero-poster {
-        position:relative; width:280px; height:400px; border-radius:10px; overflow:visible;
-        transition: all .4s ease; cursor:pointer; background:#111;
+        position:relative; width:280px; height:400px; border-radius:10px; overflow:hidden;
+        cursor:pointer; background:#111; transition: transform .3s ease;
     }
-    
-    /* Masaüstünde hover olunca veya mobilde tıklanınca ekranı büyüt */
-    .hero-poster.hero-active {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) !important;
-        width: 70vw;  /* Ekranın %70'ini kaplar */
-        height: 70vh;
-        max-width: 1000px;
-        box-shadow: 0 12px 65px rgba(229,9,20,0.85);
-        z-index: 99999;
-        border-radius: 16px;
-        overflow: hidden;
-    }
-    
-    .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .25s ease; border-radius:10px;}
-    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; background:black; border-radius:10px; overflow:hidden;}
+    .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .2s; }
+    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; background:black; }
     .hero-video-box iframe { width:100%; height:100%; border:0; }
-    
-    .hero-badge {
-        position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.8); color:#fff;
-        font-size:0.75rem; padding:6px 12px; border-radius:4px; opacity:1; transition:opacity .3s;
-        pointer-events:none;
-    }
-    .hero-active .hero-badge { opacity:0; }
-    
-    /* Mobil cihazlarda kapatmak için çarpı butonu */
-    .close-btn {
-        display: none; position: absolute; top: -15px; right: -15px;
-        background: #E50914; color: white; width: 35px; height: 35px;
-        border-radius: 50%; text-align: center; line-height: 35px;
-        font-weight: bold; font-size: 16px; cursor: pointer;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100000;
-    }
-    .hero-active .close-btn { display: block; }
-
-    /* Telefon ve Tabletler için Özel Boyutlandırma */
-    @media (max-width: 768px) {
-        .hero-poster.hero-active { 
-            width: 95vw; 
-            height: 40vh; /* Mobilde yatay videonun sığması için */
-        }
-        .close-btn { 
-            top: 5px; right: 5px; /* Mobilde buton ekranın dışına taşmasın diye içeri aldık */
-        }
-    }
     </style></head><body>
-    <div class="hero-wrap">
-      <div class="hero-poster" id="heroPoster">
-        <div class="close-btn" id="closeBtn">✖</div>
+    
+    <div class="hero-poster" id="heroPoster">
         <img src="__POSTER_URL__" class="hero-img" id="heroImg">
         <div class="hero-video-box" id="heroVideoBox"></div>
-        __BADGE__
-      </div>
     </div>
+
     <script>
     var poster = document.getElementById('heroPoster');
     var img = document.getElementById('heroImg');
     var box = document.getElementById('heroVideoBox');
-    var closeBtn = document.getElementById('closeBtn');
     var trailerKey = "__TRAILER_KEY__";
+    var isPlaying = false;
 
-    function playTrailer() {
-        if (!poster.classList.contains('hero-active')) {
-            poster.classList.add('hero-active');
-            if (trailerKey) {
-                // controls=1 eklendi, böylece ileri geri sarabilirsin.
-                box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
-                    '?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen frameborder="0"></iframe>';
-                img.style.opacity = '0';
-            }
-        }
-    }
-
-    function stopTrailer(e) {
-        if (e) e.stopPropagation();
-        if (poster.classList.contains('hero-active')) {
-            poster.classList.remove('hero-active');
+    // Hem tıklama (mobil) hem fare ile üzerine gelme (masaüstü) için tetikleyici
+    function toggleVideo() {
+        if (!trailerKey) return;
+        
+        if (!isPlaying) {
+            box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
+                '?autoplay=1&controls=1&modestbranding=1&playsinline=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>';
+            img.style.opacity = '0';
+            isPlaying = true;
+        } else {
             box.innerHTML = '';
             img.style.opacity = '1';
+            isPlaying = false;
         }
     }
 
-    // Masaüstü için (Fare ile üzerine gelme ve çıkma)
-    poster.addEventListener('mouseenter', playTrailer);
-    poster.addEventListener('mouseleave', stopTrailer);
-
-    // Telefon ve Tabletler için (Dokunma / Tıklama)
-    poster.addEventListener('click', function(e) {
-        // Eğer tıklanan yer kapatma butonu değilse videoyu oynat
-        if (e.target !== closeBtn) {
-            playTrailer();
-        }
-    });
-
-    // Kapat butonuna tıklanınca videoyu durdur ve küçült
-    closeBtn.addEventListener('click', stopTrailer);
+    poster.addEventListener('click', toggleVideo);
+    // Masaüstünde üzerine gelince de açılmasını istersen alttakini aktif et:
+    // poster.addEventListener('mouseenter', function() { if(!isPlaying) toggleVideo(); });
     </script>
     </body></html>
     """
-    badge = '<div class="hero-badge">Fragman için tıkla / üzerine gel</div>' if trailer_key else ''
-    html_out = (tpl.replace("__POSTER_URL__", poster_url)
-                    .replace("__TRAILER_KEY__", trailer_key or "")
-                    .replace("__BADGE__", badge))
-    
-    # Streamlit iframe yüksekliğini 700'e çıkardık ki video büyüdüğünde alttan kesilmesin
-    components.html(html_out, height=700, scrolling=False)
+    html_out = tpl.replace("__POSTER_URL__", poster_url).replace("__TRAILER_KEY__", trailer_key or "")
+    components.html(html_out, height=410, scrolling=False)
 
 
 def render_hero_actions(watch_link, imdb_link, tmdb_id, safe_title, m_type, poster_path, is_logged_in, is_fav):
