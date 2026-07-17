@@ -278,69 +278,6 @@ div[data-testid="stPopover"] > div > button:hover {
 </style>
 """, unsafe_allow_html=True)
 
-
-# ==========================================
-# SAĞ ÜST PROFİL / GİRİŞ ROZETİ
-# ==========================================
-def render_profile_corner():
-    # Profil fotoğrafı varsa, popover tetikleyici butonunun arka planına basıyoruz
-    if st.session_state.logged_in:
-        pic = get_profile_pic(st.session_state.username)
-        if pic:
-            st.markdown(f"""
-            <style>
-            div[data-testid="stPopover"] > div > button {{
-                background-image: url("data:image/png;base64,{pic}") !important;
-                background-size: cover !important;
-                background-position: center !important;
-                color: transparent !important;
-            }}
-            </style>
-            """, unsafe_allow_html=True)
-
-    trigger_label = "👤" if not st.session_state.logged_in else st.session_state.username[0].upper()
-
-    with st.popover(trigger_label, use_container_width=False):
-        if not st.session_state.logged_in:
-            st.markdown("#### Giriş Yap / Kayıt Ol")
-            auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True, key="auth_mode_corner")
-            user_input = st.text_input("Kullanıcı Adı", key="user_corner").strip()
-            pass_input = st.text_input("Şifre", type="password", key="pass_corner")
-
-            if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
-                if not user_input or not pass_input:
-                    st.warning("Lütfen alanları doldurun.")
-                elif auth_mode == "Kayıt Ol" and len(pass_input) < MIN_PASSWORD_LEN:
-                    st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
-                elif auth_mode == "Kayıt Ol":
-                    if add_user(user_input, pass_input):
-                        st.success("Hesap oluşturuldu! Şimdi giriş yapabilirsiniz.")
-                    else:
-                        st.error("Bu kullanıcı adı zaten alınmış!")
-                else:
-                    if login_user(user_input, pass_input):
-                        st.session_state.logged_in = True
-                        st.session_state.username = user_input
-                        st.rerun()
-                    else:
-                        st.error("Kullanıcı adı veya şifre hatalı!")
-        else:
-            st.markdown(f"**{st.session_state.username}**")
-            uploaded = st.file_uploader("Profil fotoğrafı seç", type=["png", "jpg", "jpeg"], key="pfp_upload")
-            if uploaded is not None:
-                b64 = base64.b64encode(uploaded.read()).decode()
-                set_profile_pic(st.session_state.username, b64)
-                st.rerun()
-            st.caption("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
-            if st.button("Çıkış Yap", key="logout_corner", use_container_width=True):
-                st.session_state.logged_in = False
-                st.session_state.username = ""
-                st.rerun()
-
-
-render_profile_corner()
-
-
 # ==========================================
 # TMDB VERİ ÇEKME FONKSİYONLARI
 # ==========================================
@@ -481,129 +418,60 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
     return None
 
 
-# ==========================================
-# NETFLIX TARZI HOVER'DA FRAGMAN OYNATAN POSTER
-# ==========================================
-# ==========================================
-# NETFLIX TARZI HOVER/TIKLAMA İLE FRAGMAN OYNATAN POSTER
-# ==========================================
 def render_hero_poster(poster_url, trailer_key):
     tpl = """
     <!DOCTYPE html><html><head><style>
-    body { margin:0; padding:40px; background:transparent; overflow:visible; font-family:'Montserrat',sans-serif; }
-    .hero-wrap { display:flex; align-items:center; justify-content:center; }
+    body { margin:0; padding:0; background:transparent; overflow:hidden; font-family:'Montserrat',sans-serif; }
     .hero-poster {
-        position:relative; width:280px; height:400px; border-radius:10px; overflow:visible;
-        transition: all .4s ease; cursor:pointer; background:#111;
+        position:relative; width:280px; height:400px; border-radius:10px; overflow:hidden;
+        cursor:pointer; background:#111; margin: 0 auto;
     }
-    
-    /* Masaüstünde hover olunca veya mobilde tıklanınca ekranı büyüt */
-    .hero-poster.hero-active {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) !important;
-        width: 70vw;  /* Ekranın %70'ini kaplar */
-        height: 70vh;
-        max-width: 1000px;
-        box-shadow: 0 12px 65px rgba(229,9,20,0.85);
-        z-index: 99999;
-        border-radius: 16px;
-        overflow: hidden;
-    }
-    
-    .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .25s ease; border-radius:10px;}
-    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; background:black; border-radius:10px; overflow:hidden;}
+    .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .2s; }
+    /* Siyah arka planı kaldırdık ki başlangıçta afişi kapatmasın */
+    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+    /* Sadece video oynarken aktif olacak sınıf */
+    .hero-video-box.active { pointer-events:auto; background:black; }
     .hero-video-box iframe { width:100%; height:100%; border:0; }
-    
-    .hero-badge {
-        position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.8); color:#fff;
-        font-size:0.75rem; padding:6px 12px; border-radius:4px; opacity:1; transition:opacity .3s;
-        pointer-events:none;
-    }
-    .hero-active .hero-badge { opacity:0; }
-    
-    /* Mobil cihazlarda kapatmak için çarpı butonu */
-    .close-btn {
-        display: none; position: absolute; top: -15px; right: -15px;
-        background: #E50914; color: white; width: 35px; height: 35px;
-        border-radius: 50%; text-align: center; line-height: 35px;
-        font-weight: bold; font-size: 16px; cursor: pointer;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100000;
-    }
-    .hero-active .close-btn { display: block; }
-
-    /* Telefon ve Tabletler için Özel Boyutlandırma */
-    @media (max-width: 768px) {
-        .hero-poster.hero-active { 
-            width: 95vw; 
-            height: 40vh; /* Mobilde yatay videonun sığması için */
-        }
-        .close-btn { 
-            top: 5px; right: 5px; /* Mobilde buton ekranın dışına taşmasın diye içeri aldık */
-        }
-    }
     </style></head><body>
-    <div class="hero-wrap">
-      <div class="hero-poster" id="heroPoster">
-        <div class="close-btn" id="closeBtn">✖</div>
+    
+    <div class="hero-poster" id="heroPoster">
         <img src="__POSTER_URL__" class="hero-img" id="heroImg">
         <div class="hero-video-box" id="heroVideoBox"></div>
-        __BADGE__
-      </div>
     </div>
+
     <script>
     var poster = document.getElementById('heroPoster');
     var img = document.getElementById('heroImg');
     var box = document.getElementById('heroVideoBox');
-    var closeBtn = document.getElementById('closeBtn');
     var trailerKey = "__TRAILER_KEY__";
+    var isPlaying = false;
 
-    function playTrailer() {
-        if (!poster.classList.contains('hero-active')) {
-            poster.classList.add('hero-active');
-            if (trailerKey) {
-                // controls=1 eklendi, böylece ileri geri sarabilirsin.
-                box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
-                    '?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen frameborder="0"></iframe>';
-                img.style.opacity = '0';
-            }
-        }
-    }
-
-    function stopTrailer(e) {
-        if (e) e.stopPropagation();
-        if (poster.classList.contains('hero-active')) {
-            poster.classList.remove('hero-active');
+    poster.addEventListener('click', function() {
+        if (!trailerKey) return; // Fragman yoksa hiçbir şey yapma
+        
+        if (!isPlaying) {
+            // Tıklandığında video kutusunu aktif et, videoyu ekle ve afişi gizle
+            box.classList.add('active');
+            box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
+                '?autoplay=1&controls=1&modestbranding=1&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+            img.style.opacity = '0';
+            isPlaying = true;
+        } else {
+            // Tekrar tıklanırsa videoyu kapat, afişi geri getir
+            box.classList.remove('active');
             box.innerHTML = '';
             img.style.opacity = '1';
-        }
-    }
-
-    // Masaüstü için (Fare ile üzerine gelme ve çıkma)
-    poster.addEventListener('mouseenter', playTrailer);
-    poster.addEventListener('mouseleave', stopTrailer);
-
-    // Telefon ve Tabletler için (Dokunma / Tıklama)
-    poster.addEventListener('click', function(e) {
-        // Eğer tıklanan yer kapatma butonu değilse videoyu oynat
-        if (e.target !== closeBtn) {
-            playTrailer();
+            isPlaying = false;
         }
     });
-
-    // Kapat butonuna tıklanınca videoyu durdur ve küçült
-    closeBtn.addEventListener('click', stopTrailer);
     </script>
     </body></html>
     """
-    badge = '<div class="hero-badge">Fragman için tıkla / üzerine gel</div>' if trailer_key else ''
-    html_out = (tpl.replace("__POSTER_URL__", poster_url)
-                    .replace("__TRAILER_KEY__", trailer_key or "")
-                    .replace("__BADGE__", badge))
     
-    # Streamlit iframe yüksekliğini 700'e çıkardık ki video büyüdüğünde alttan kesilmesin
-    components.html(html_out, height=700, scrolling=False)
+    html_out = (tpl.replace("__POSTER_URL__", poster_url)
+                   .replace("__TRAILER_KEY__", trailer_key or ""))
+                   
+    components.html(html_out, height=420, scrolling=False)
 
 
 def render_hero_actions(watch_link, imdb_link, tmdb_id, safe_title, m_type, poster_path, is_logged_in, is_fav):
@@ -751,23 +619,128 @@ logo_svg = """
 
 st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
+# ==========================================
+# KAYARAK AÇILAN MERKEZİ MENÜ SİSTEMİ
+# ==========================================
+def render_center_navigation():
+    pic = get_profile_pic(st.session_state.username) if st.session_state.logged_in else None
+    bg_style = f"background-image: url('data:image/png;base64,{pic}'); background-size: cover;" if pic else ""
+    initial = "" if pic else ("👤" if not st.session_state.logged_in else st.session_state.username[0].upper())
+
+    html_code = f"""
+    <style>
+    .center-nav-wrapper {{
+        position: fixed;
+        top: 25px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }}
+    #nav-toggle {{ display: none; }}
+    
+    /* Ortadaki Profil Butonu */
+    .profile-btn-center {{
+        width: 65px;
+        height: 65px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #E50914, #a8050d);
+        {bg_style}
+        border: 3px solid #141414;
+        box-shadow: 0 0 15px rgba(229,9,20,0.6);
+        cursor: pointer;
+        z-index: 10000;
+        position: relative;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 26px;
+    }}
+    .profile-btn-center:hover {{
+        transform: scale(1.05);
+        box-shadow: 0 0 25px rgba(229,9,20,0.9);
+    }}
+    
+    /* Tıklandığında Profil Butonunun Küçülmesi */
+    #nav-toggle:checked ~ label .profile-btn-center {{
+        transform: scale(0.85);
+        box-shadow: 0 0 20px rgba(229,9,20,0.8);
+        border-color: #E50914;
+    }}
+    
+    /* Sağ ve Sol Menü Başlıkları */
+    .nav-menu-item {{
+        position: absolute;
+        top: 50%;
+        background: rgba(20, 20, 20, 0.95);
+        border: 1px solid #E50914;
+        color: white !important;
+        text-decoration: none !important;
+        padding: 10px 20px;
+        border-radius: 25px;
+        font-family: 'Montserrat', sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); /* Yaylanma efekti */
+        z-index: 9998;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }}
+    .nav-menu-item:hover {{
+        background: #E50914;
+        color: white !important;
+    }}
+    
+    /* Checkbox işaretlendiğinde (tıklandığında) öğelerin kayacağı yerler */
+    #nav-toggle:checked ~ .nav-item-l2 {{ opacity: 1; pointer-events: auto; transform: translate(-260px, -50%); }} /* En Sol */
+    #nav-toggle:checked ~ .nav-item-l1 {{ opacity: 1; pointer-events: auto; transform: translate(-140px, -50%); }} /* Orta Sol */
+    #nav-toggle:checked ~ .nav-item-r1 {{ opacity: 1; pointer-events: auto; transform: translate(50px, -50%); }}   /* Orta Sağ */
+    #nav-toggle:checked ~ .nav-item-r2 {{ opacity: 1; pointer-events: auto; transform: translate(170px, -50%); }}  /* En Sağ */
+    </style>
+    
+    <div class="center-nav-wrapper">
+        <input type="checkbox" id="nav-toggle">
+        
+        <a href="?secim=Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>
+        <a href="?secim=Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>
+        
+        <label for="nav-toggle">
+            <div class="profile-btn-center">{initial}</div>
+        </label>
+        
+        <a href="?secim=Favorilerim" target="_self" class="nav-menu-item nav-item-r1">❤️ Favoriler</a>
+        <a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r2">👤 Hesabım</a>
+    </div>
+    """
+    st.markdown(html_code, unsafe_allow_html=True)
+
 
 if "secim" not in st.session_state:
     st.session_state.secim = "Film"
 
-st.markdown('<div class="top-menu-row">', unsafe_allow_html=True)
-menu_items = ["Film", "Dizi", "Belgesel", "Ne İzlesem?", "Favorilerim"]
-menu_cols = st.columns(len(menu_items))
-for col, item in zip(menu_cols, menu_items):
-    with col:
-        if st.button(item, key=f"menu_{item}", use_container_width=True,
-                     type="primary" if st.session_state.secim == item else "secondary"):
-            st.session_state.secim = item
-            st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
+# Animasyonlu menüden gelen tıklamaları (URL parametrelerini) yakala
+if "secim" in st.query_params:
+    st.session_state.secim = st.query_params["secim"]
+    st.query_params.clear()
+    st.rerun()
+
+render_center_navigation()
 
 secim = st.session_state.secim
 media_type = 'tv' if secim == "Dizi" else 'movie'
+if "secim" not in st.session_state:
+    st.session_state.secim = "Film"
+
+
 
 # --- FAVORİLERİM SEKMESİ ---
 if secim == "Favorilerim":
