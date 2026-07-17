@@ -234,18 +234,17 @@ div[data-baseweb="input"]:focus-within {
 /* --- Sağ üst profil rozeti --- */
 div[data-testid="stPopover"] {
     position: fixed !important;
-    top: 15px; /* Yarım gözükmemesi için biraz daha yukarı-sağa aldık */
-    right: 15px; 
+    top: 18px;
+    right: 28px;
     z-index: 9999;
 }
 div[data-testid="stPopover"] > div > button {
-    width: 50px !important;
-    height: 50px !important;
-    min-width: 50px !important;
+    width: 46px !important;
+    height: 46px !important;
+    min-width: 46px !important;
     border-radius: 50% !important;
     padding: 0 !important;
     background: linear-gradient(135deg, #E50914, #a8050d) !important;
-    background-repeat: no-repeat !important; /* Resmin tekrarlanmasını veya kaymasını engeller */
     border: 2px solid rgba(255,255,255,0.18) !important;
     box-shadow: 0 0 14px rgba(229,9,20,0.55) !important;
     color: #ffffff !important;
@@ -492,29 +491,22 @@ def render_hero_poster(poster_url, trailer_key):
     .hero-wrap { display:flex; align-items:center; justify-content:center; }
     .hero-poster {
         position:relative; width:280px; height:400px; border-radius:10px; overflow:hidden;
-        transition: all .4s ease; cursor:pointer; background:#111;
+        transition: transform .4s ease, box-shadow .4s ease; cursor:pointer; background:#111;
     }
-    /* BURASI DEĞİŞTİ: Hover olunca ekranın tam ortasına geç ve %70 boyutuna ulaş */
     .hero-poster.hero-hovered {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) !important;
-        width: 70vw;
-        height: 70vh;
-        box-shadow: 0 12px 65px rgba(229,9,20,0.85);
-        z-index: 99999;
-        border-radius: 16px;
+        transform: scale(1.12);
+        box-shadow: 0 12px 45px rgba(229,9,20,0.55);
+        z-index: 10;
     }
     .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .25s ease; }
-    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; background:black; }
-    .hero-video-box iframe { width:100%; height:100%; border:0; }
+    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; }
+    .hero-video-box iframe { width:100%; height:100%; border:0; pointer-events:none; }
     .hero-badge {
         position:absolute; bottom:10px; left:10px; background:rgba(0,0,0,0.65); color:#fff;
         font-size:0.65rem; padding:4px 9px; border-radius:4px; opacity:0; transition:opacity .3s;
         pointer-events:none;
     }
-    .hero-poster.hero-hovered .hero-badge { opacity:0; } /* Video açılınca yazıyı gizle */
+    .hero-poster.hero-hovered .hero-badge { opacity:1; }
     </style></head><body>
     <div class="hero-wrap">
       <div class="hero-poster" id="heroPoster">
@@ -531,9 +523,9 @@ def render_hero_poster(poster_url, trailer_key):
     poster.addEventListener('mouseenter', function () {
         poster.classList.add('hero-hovered');
         if (trailerKey) {
-            /* BURASI DEĞİŞTİ: controls=1 yapıldı ve allowfullscreen eklendi */
             box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
-                '?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen frameborder="0"></iframe>';
+                '?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=' + trailerKey +
+                '" allow="autoplay; encrypted-media" frameborder="0"></iframe>';
             img.style.opacity = '0';
         }
     });
@@ -545,24 +537,21 @@ def render_hero_poster(poster_url, trailer_key):
     </script>
     </body></html>
     """
-    badge = '<div class="hero-badge">Fragmanı izlemek için üzerine gel</div>' if trailer_key else ''
+    badge = '<div class="hero-badge">Fragman için üzerine gel</div>' if trailer_key else ''
     html_out = (tpl.replace("__POSTER_URL__", poster_url)
                     .replace("__TRAILER_KEY__", trailer_key or "")
                     .replace("__BADGE__", badge))
-    # Yükseklik limitini kaldırıyoruz ki video %70 büyüyebilsin
-    components.html(html_out, height=800, scrolling=False)
+    components.html(html_out, height=480, scrolling=False)
 
 
 def render_hero_actions(watch_link, imdb_link, tmdb_id, safe_title, m_type, poster_path, is_logged_in, is_fav):
     fav_html = ""
     if is_logged_in:
         if is_fav:
-            # target="_self" eklendi: Sayfa yeni sekmede açılmaz, aynı ekranda güncellenir.
-            fav_html = f'<a href="?action=remove_fav&id={tmdb_id}" target="_self" class="hero-btn hero-btn-active">Favoriden Çıkar</a>'
+            fav_html = f'<a href="?action=remove_fav&id={tmdb_id}" class="hero-btn hero-btn-active">Favoriden Çıkar</a>'
         else:
-            # target="_self" eklendi
             fav_html = (f'<a href="?action=add_fav&id={tmdb_id}&title={safe_title}&type={m_type}'
-                        f'&poster={poster_path}" target="_self" class="hero-btn">Favoriye Ekle</a>')
+                        f'&poster={poster_path}" class="hero-btn">Favoriye Ekle</a>')
     html_out = f"""
     <div class="hero-actions">
       <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">İZLE</a>
