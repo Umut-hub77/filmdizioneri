@@ -125,14 +125,18 @@ def get_favorites(username):
             (username,)
         ).fetchall()
 
-
-# ==========================================
-# OTURUM YÖNETİMİ
-# ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
 
+# Menü seçimi için hafıza
+if "secim" not in st.session_state:
+    st.session_state.secim = "Film"
+
+# Ne izlesem sekmesindeki Film/Dizi seçimi için hafıza (HATAYI ÇÖZEN KISIM)
+if "tur_tipi" not in st.session_state:
+    st.session_state.tur_tipi = "Film"
+    
 # --- URL PARAMETRELERİ İLE HTML'DEN TETİKLENEN FAVORİ İŞLEMLERİ ---
 if "action" in st.query_params:
     action = st.query_params["action"]
