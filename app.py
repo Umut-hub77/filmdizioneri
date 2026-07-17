@@ -637,8 +637,7 @@ def render_center_navigation():
     bg_style = f"background-image: url('data:image/png;base64,{pic}'); background-size: cover;" if pic else ""
     initial = "" if pic else ("👤" if not st.session_state.logged_in else st.session_state.username[0].upper())
 
-    # Buton aralıkları (translate değerleri) çakışmayı önlemek için genişletildi
-    # Linklerin sayfa yenilememesi için onclick javascript event'leri eklendi
+    # Saf href mantığı. Aralıklar çakışmayacak şekilde (120, 220, 340 vb.) simetrik düzenlendi.
     html_code = (
         '<div class="center-nav-wrapper"><style>'
         '.center-nav-wrapper { position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 99999; display: flex; align-items: center; justify-content: center; } '
@@ -646,65 +645,47 @@ def render_center_navigation():
         '.profile-btn-center { width: 65px; height: 65px; border-radius: 50%; background: linear-gradient(135deg, #E50914, #a8050d); ' + bg_style + ' border: 3px solid #141414; box-shadow: 0 0 15px rgba(229,9,20,0.6); cursor: pointer; z-index: 10000; position: relative; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 26px; } '
         '.profile-btn-center:hover { transform: scale(1.05); box-shadow: 0 0 25px rgba(229,9,20,0.9); } '
         '#nav-toggle:checked ~ label .profile-btn-center { transform: scale(0.85); box-shadow: 0 0 20px rgba(229,9,20,0.8); border-color: #E50914; } '
-        '.nav-menu-item { cursor: pointer; position: absolute; top: 50%; background: rgba(20, 20, 20, 0.95); border: 1px solid #E50914; color: white !important; text-decoration: none !important; padding: 10px 20px; border-radius: 25px; font-family: "Montserrat", sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 9998; box-shadow: 0 4px 10px rgba(0,0,0,0.5); left: 50%; transform: translate(-50%, -50%); } '
+        '.nav-menu-item { position: absolute; top: 50%; background: rgba(20, 20, 20, 0.95); border: 1px solid #E50914; color: white !important; text-decoration: none !important; padding: 10px 20px; border-radius: 25px; font-family: "Montserrat", sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 9998; box-shadow: 0 4px 10px rgba(0,0,0,0.5); left: 50%; transform: translate(-50%, -50%); } '
         '.nav-menu-item:hover { background: #E50914; color: white !important; } '
-        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-330px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-210px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-100px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(130px, -50%); } '
-        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(280px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l3 { opacity: 1; pointer-events: auto; transform: translate(-340px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l2 { opacity: 1; pointer-events: auto; transform: translate(-220px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-l1 { opacity: 1; pointer-events: auto; transform: translate(-120px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r1 { opacity: 1; pointer-events: auto; transform: translate(150px, -50%); } '
+        '#nav-toggle:checked ~ .nav-item-r2 { opacity: 1; pointer-events: auto; transform: translate(290px, -50%); } '
         '#nav-toggle:checked ~ .nav-item-r3 { opacity: 1; pointer-events: auto; transform: translate(415px, -50%); } '
         '</style>'
-        '<script>'
-        'function clickHidden(name) {'
-        '  var btns = window.parent.document.querySelectorAll("button");'
-        '  for(var i=0; i<btns.length; i++) {'
-        '    if(btns[i].innerText === name) { btns[i].click(); break; }'
-        '  }'
-        '}'
-        'var hideInt = setInterval(function() {'
-        '  var btns = window.parent.document.querySelectorAll("button");'
-        '  var count = 0;'
-        '  for(var i=0; i<btns.length; i++) {'
-        '    if(btns[i].innerText.startsWith("GZ_")) {'
-        '      var cont = btns[i].closest("div[data-testid=\'stElementContainer\']");'
-        '      if(cont) { cont.style.display = "none"; count++; }'
-        '    }'
-        '  }'
-        '  if(count >= 6) clearInterval(hideInt);'
-        '}, 50);'
-        '</script>'
         '<input type="checkbox" id="nav-toggle">'
-        '<a onclick="clickHidden(\'GZ_Belgesel\')" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
-        '<a onclick="clickHidden(\'GZ_Film\')" class="nav-menu-item nav-item-l2">🎬 Film</a>'
-        '<a onclick="clickHidden(\'GZ_Dizi\')" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
+        '<a href="?secim=Belgesel" target="_self" class="nav-menu-item nav-item-l3">🌍 Belgesel</a>'
+        '<a href="?secim=Film" target="_self" class="nav-menu-item nav-item-l2">🎬 Film</a>'
+        '<a href="?secim=Dizi" target="_self" class="nav-menu-item nav-item-l1">📺 Dizi</a>'
         '<label for="nav-toggle"><div class="profile-btn-center">' + initial + '</div></label>'
-        '<a onclick="clickHidden(\'GZ_NeIzlesem\')" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
-        '<a onclick="clickHidden(\'GZ_Favorilerim\')" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
-        '<a onclick="clickHidden(\'GZ_Hesabim\')" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
+        '<a href="?secim=NeIzlesem" target="_self" class="nav-menu-item nav-item-r1">🎲 Ne İzlesem?</a>'
+        '<a href="?secim=Favorilerim" target="_self" class="nav-menu-item nav-item-r2">❤️ Favoriler</a>'
+        '<a href="?secim=Hesabım" target="_self" class="nav-menu-item nav-item-r3">👤 Hesabım</a>'
         '</div>'
     )
+    
     st.markdown(html_code, unsafe_allow_html=True)
-
 
 if "secim" not in st.session_state:
     st.session_state.secim = "Film"
 
-render_center_navigation()
+# Animasyonlu menüden gelen tıklamaları (URL parametrelerini) temiz bir şekilde yakala
+if "secim" in st.query_params:
+    gelen_secim = st.query_params["secim"]
+    
+    # URL hatası vermemesi için "Ne İzlesem?" eşleştirmesini burada manuel yapıyoruz
+    if gelen_secim == "NeIzlesem":
+        st.session_state.secim = "Ne İzlesem?"
+    else:
+        st.session_state.secim = gelen_secim
+        
+    st.query_params.clear()
 
-# --- SİHİRLİ GİZLİ BUTONLAR ---
-# Bu butonlar JS tarafından otomatik tıklanır ve CSS tarafından gizlenir. 
-# Sayfayı URL üzerinden yenilemek yerine Streamlit'in kendi altyapısını kullanarak oturumu korur.
-if st.button("GZ_Belgesel"): st.session_state.secim = "Belgesel"; st.rerun()
-if st.button("GZ_Film"): st.session_state.secim = "Film"; st.rerun()
-if st.button("GZ_Dizi"): st.session_state.secim = "Dizi"; st.rerun()
-if st.button("GZ_NeIzlesem"): st.session_state.secim = "Ne İzlesem?"; st.rerun()
-if st.button("GZ_Favorilerim"): st.session_state.secim = "Favorilerim"; st.rerun()
-if st.button("GZ_Hesabim"): st.session_state.secim = "Hesabım"; st.rerun()
+render_center_navigation()
 
 secim = st.session_state.secim
 media_type = 'tv' if secim == "Dizi" else 'movie'
-
 # --- FAVORİLERİM SEKMESİ ---
 if secim == "Favorilerim":
     st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
