@@ -682,8 +682,9 @@ def render_scrollable_strip(title: str, items: list):
         <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
         <img src="{image_url}" class="poster-img">
         <div class="hover-overlay">
-        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
-        <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
+          <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
+          <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
+          <!-- Favori butonu burada yok! -->
         </div>
         </div>
         </div>
@@ -692,9 +693,7 @@ def render_scrollable_strip(title: str, items: list):
     html_content += "</div></body></html>"
     components.html(html_content, height=330, scrolling=False)
 
-    # --- Favori yönetimi: gerçek Streamlit widget'ı, iframe DIŞINDA ---
-    # Bu, session_state'i asla bozmaz çünkü normal bir Streamlit widget
-    # etkileşimidir (websocket üzerinden rerun), sayfa hiç yenilenmez.
+# --- Favori yönetimi: gerçek Streamlit widget'ı, iframe DIŞINDA ---
     if st.session_state.logged_in:
         item_map = {}
         for row in items:
@@ -704,17 +703,36 @@ def render_scrollable_strip(title: str, items: list):
             if not poster_path or not tmdb_id:
                 continue
             m_type_guess = 'movie' if 'title' in row else 'tv'
-            label = f"{baslik}"
+            
+            # Aynı isimli filmlerin birbirini ezmesini engellemek için ID'yi de ekliyoruz
+            label = f"{baslik} ({tmdb_id})"
             item_map[label] = (str(tmdb_id), baslik, m_type_guess, poster_path)
 
         if item_map:
             default_selected = [label for label, (tid, *_r) in item_map.items() if tid in user_favs_set]
             widget_key = f"favsel_{container_id}"
-            selected = st.multiselect(
+
+            # Seçim değiştiğinde tetiklenecek güvenli fonksiyon
+            def fav_selection_changed(w_key, current_map, old_favs):
+                new_selection = st.session_state[w_key]
+                
+                for lbl, (tid, baslik, mtype, poster) in current_map.items():
+                    is_selected_now = lbl in new_selection
+                    was_fav_before = tid in old_favs
+                    
+                    if is_selected_now and not was_fav_before:
+                        add_favorite(st.session_state.username, tid, baslik, mtype, poster)
+                    elif not is_selected_now and was_fav_before:
+                        remove_favorite(st.session_state.username, tid)
+
+            # Arayüz aracı (Widget)
+            st.multiselect(
                 "❤️ Bu listeden favorilere eklemek/çıkarmak istediklerinizi seçin:",
                 options=list(item_map.keys()),
                 default=default_selected,
                 key=widget_key,
+                on_change=fav_selection_changed,
+                kwargs={"w_key": widget_key, "current_map": item_map, "old_favs": user_favs_set}
             )
 
             if set(selected) != set(default_selected):
