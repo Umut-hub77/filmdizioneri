@@ -391,26 +391,38 @@ def render_profile_corner():
         if not st.session_state.logged_in:
             st.markdown("#### Giriş Yap / Kayıt Ol")
             auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True, key="auth_mode_corner")
-            user_input = st.text_input("Kullanıcı Adı", key="user_corner").strip()
-            pass_input = st.text_input("Şifre", type="password", key="pass_corner")
 
-            if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
-                if not user_input or not pass_input:
-                    st.warning("Lütfen alanları doldurun.")
-                elif auth_mode == "Kayıt Ol" and len(pass_input) < MIN_PASSWORD_LEN:
-                    st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
-                elif auth_mode == "Kayıt Ol":
-                    if add_user(user_input, pass_input):
+            if auth_mode == "Kayıt Ol":
+                ncol1, ncol2 = st.columns(2)
+                with ncol1:
+                    ad_input = st.text_input("Ad", key="ad_corner").strip()
+                with ncol2:
+                    soyad_input = st.text_input("Soyad", key="soyad_corner").strip()
+                pass_input = st.text_input("Şifre", type="password", key="pass_corner")
+                full_name = " ".join(part for part in [ad_input, soyad_input] if part)
+
+                if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
+                    if not ad_input or not soyad_input or not pass_input:
+                        st.warning("Lütfen ad, soyad ve şifre alanlarını doldurun.")
+                    elif len(pass_input) < MIN_PASSWORD_LEN:
+                        st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
+                    elif add_user(full_name, pass_input):
                         st.success("Hesap oluşturuldu! Şimdi giriş yapabilirsiniz.")
                     else:
-                        st.error("Bu kullanıcı adı zaten alınmış!")
-                else:
-                    if login_user(user_input, pass_input):
+                        st.error("Bu ad soyad ile zaten bir hesap var!")
+            else:
+                full_name = st.text_input("Ad Soyad", key="user_corner").strip()
+                pass_input = st.text_input("Şifre", type="password", key="pass_corner")
+
+                if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
+                    if not full_name or not pass_input:
+                        st.warning("Lütfen alanları doldurun.")
+                    elif login_user(full_name, pass_input):
                         st.session_state.logged_in = True
-                        st.session_state.username = user_input
+                        st.session_state.username = full_name
                         st.rerun()
                     else:
-                        st.error("Kullanıcı adı veya şifre hatalı!")
+                        st.error("Ad soyad veya şifre hatalı!")
         else:
             username = st.session_state.username
             info = get_user_info(username)
@@ -1054,25 +1066,29 @@ else:
 
     else:
         st.markdown("<hr style='border-color: transparent;'>", unsafe_allow_html=True)
-        if 'last_selection' not in st.session_state or st.session_state.last_selection != secim:
-            st.session_state.seen_ids = set()
-            st.session_state.last_selection = secim
+        # NOT: Streamlit her etkileşimde tüm scripti baştan çalıştırır; ekranda görünen
+        # hiçbir şey otomatik olarak "hatırlanmaz". Bu yüzden içerik burada HER SEFERİNDE
+        # yeniden çiziliyor (yalnızca ilk sekme değişiminde değil) — aksi halde aynı
+        # sekmeye tekrar dönüldüğünde sayfa boş görünüyordu. Alttaki veri çekme
+        # fonksiyonları zaten @st.cache_data ile önbelleklendiği için bu ekstra bir
+        # performans maliyeti getirmez (tekrar API çağrısı yapmaz).
+        st.session_state.last_selection = secim
 
-            if secim == "Belgesel":
-                with st.spinner("Belgeseller yükleniyor..."):
-                    populer = get_tmdb_discover_by_genre("99", TMDB_API_KEY, 'movie', limit=15)
-                    render_scrollable_strip("En Popüler Belgeseller", populer)
-                    tarih = get_tmdb_discover_by_genre("99,36", TMDB_API_KEY, 'movie', limit=15)
-                    render_scrollable_strip("Tarih Belgeselleri", tarih)
-                    doga = get_tmdb_discover_by_genre("99", TMDB_API_KEY, 'movie', limit=25)
-                    doga = [d for d in doga if any(x in (d.get('title') or '').lower() for x in ['nature', 'wild', 'ocean', 'earth'])]
-                    render_scrollable_strip("Doğa ve Vahşi Yaşam", doga)
-            else:
-                with st.spinner("Kategoriler Yükleniyor..."):
-                    genres = get_tmdb_genres(TMDB_API_KEY, media_type)
-                    genres = [g for g in genres if g['id'] != 99]
-                    for genre in genres:
-                        genre_id = str(genre['id'])
-                        genre_name = genre['name']
-                        category_items = get_tmdb_discover_by_genre(genre_id, TMDB_API_KEY, media_type, limit=15)
-                        render_scrollable_strip(f"En İyi {genre_name} Yapımları", category_items)
+        if secim == "Belgesel":
+            with st.spinner("Belgeseller yükleniyor..."):
+                populer = get_tmdb_discover_by_genre("99", TMDB_API_KEY, 'movie', limit=15)
+                render_scrollable_strip("En Popüler Belgeseller", populer)
+                tarih = get_tmdb_discover_by_genre("99,36", TMDB_API_KEY, 'movie', limit=15)
+                render_scrollable_strip("Tarih Belgeselleri", tarih)
+                doga = get_tmdb_discover_by_genre("99", TMDB_API_KEY, 'movie', limit=25)
+                doga = [d for d in doga if any(x in (d.get('title') or '').lower() for x in ['nature', 'wild', 'ocean', 'earth'])]
+                render_scrollable_strip("Doğa ve Vahşi Yaşam", doga)
+        else:
+            with st.spinner("Kategoriler Yükleniyor..."):
+                genres = get_tmdb_genres(TMDB_API_KEY, media_type)
+                genres = [g for g in genres if g['id'] != 99]
+                for genre in genres:
+                    genre_id = str(genre['id'])
+                    genre_name = genre['name']
+                    category_items = get_tmdb_discover_by_genre(genre_id, TMDB_API_KEY, media_type, limit=15)
+                    render_scrollable_strip(f"En İyi {genre_name} Yapımları", category_items)
