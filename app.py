@@ -11,6 +11,8 @@ import hashlib
 import base64
 from contextlib import contextmanager
 from PIL import Image
+import psycopg2
+from psycopg2 import IntegrityError
 
 # ==========================================
 # SAYFA AYARLARI
@@ -33,105 +35,98 @@ MIN_PASSWORD_LEN = 6
 # ==========================================
 # VERİTABANI KATMANI (SQLite)
 # ==========================================
+DB_URL = st.secrets.get("DATABASE_URL")
+
 @contextmanager
 def get_db():
-    """Tüm DB işlemleri için tek noktadan bağlantı yönetimi.
-    Bağlantı otomatik kapanır, hata olursa da sızıntı olmaz."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    """Tüm DB işlemleri için tek noktadan online bağlantı yönetimi."""
+    conn = psycopg2.connect(DB_URL)
     try:
         yield conn
         conn.commit()
     finally:
         conn.close()
 
-
 def init_db():
+    if not DB_URL:
+        st.error("Veritabanı bağlantı linki bulunamadı! Lütfen Streamlit Secrets'a DATABASE_URL ekleyin.")
+        return
+        
     with get_db() as conn:
         c = conn.cursor()
         c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
         c.execute('''CREATE TABLE IF NOT EXISTS favorites
                      (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
                       UNIQUE(username, tmdb_id))''')
-        # Eski veritabanlarında profile_pic sütunu yoksa ekle (migration)
-        try:
-            c.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT')
-        except sqlite3.OperationalError:
-            pass  # sütun zaten var
-
 
 init_db()
-
 
 def make_hashes(password: str) -> str:
     return hashlib.sha256(str.encode(password)).hexdigest()
 
-
 def check_hashes(password: str, hashed_text: str) -> bool:
     return make_hashes(password) == hashed_text
 
-
 def make_session_token(username: str) -> str:
-    """Sayfa tam yenilendiğinde (iframe linkleri nedeniyle) session_state sıfırlansa
-    bile kullanıcıyı sessizce geri giriş yapabilmek için kullanılan token."""
     with get_db() as conn:
-        row = conn.execute('SELECT password FROM users WHERE username=?', (username,)).fetchone()
+        c = conn.cursor()
+        c.execute('SELECT password FROM users WHERE username=%s', (username,))
+        row = c.fetchone()
     if not row:
         return ""
     return hashlib.sha256((username + row[0]).encode()).hexdigest()[:16]
 
-
 def verify_session_token(username: str, token: str) -> bool:
     return bool(username) and bool(token) and make_session_token(username) == token
 
-
 def add_user(username: str, password: str) -> bool:
-    """Yeni kullanıcı ekler. Kullanıcı adı zaten varsa False döner."""
     try:
         with get_db() as conn:
-            conn.execute('INSERT INTO users (username, password) VALUES (?, ?)',
-                         (username, make_hashes(password)))
+            c = conn.cursor()
+            c.execute('INSERT INTO users (username, password) VALUES (%s, %s)',
+                      (username, make_hashes(password)))
         return True
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return False
-
 
 def login_user(username: str, password: str) -> bool:
     with get_db() as conn:
-        row = conn.execute('SELECT password FROM users WHERE username=?', (username,)).fetchone()
+        c = conn.cursor()
+        c.execute('SELECT password FROM users WHERE username=%s', (username,))
+        row = c.fetchone()
     return bool(row) and check_hashes(password, row[0])
-
 
 def get_profile_pic(username):
     with get_db() as conn:
-        row = conn.execute('SELECT profile_pic FROM users WHERE username=?', (username,)).fetchone()
+        c = conn.cursor()
+        c.execute('SELECT profile_pic FROM users WHERE username=%s', (username,))
+        row = c.fetchone()
     return row[0] if row and row[0] else None
-
 
 def set_profile_pic(username, b64_data):
     with get_db() as conn:
-        conn.execute('UPDATE users SET profile_pic=? WHERE username=?', (b64_data, username))
-
+        c = conn.cursor()
+        c.execute('UPDATE users SET profile_pic=%s WHERE username=%s', (b64_data, username))
 
 def add_favorite(username, tmdb_id, title, media_type, poster_path):
     try:
         with get_db() as conn:
-            conn.execute('INSERT INTO favorites VALUES (?, ?, ?, ?, ?)',
-                         (username, str(tmdb_id), title, media_type, poster_path))
-    except sqlite3.IntegrityError:
+            c = conn.cursor()
+            c.execute('INSERT INTO favorites (username, tmdb_id, title, media_type, poster_path) VALUES (%s, %s, %s, %s, %s)',
+                      (username, str(tmdb_id), title, media_type, poster_path))
+    except IntegrityError:
         pass  # Zaten favorilerde
-
 
 def remove_favorite(username, tmdb_id):
     with get_db() as conn:
-        conn.execute('DELETE FROM favorites WHERE username=? AND tmdb_id=?', (username, str(tmdb_id)))
-
+        c = conn.cursor()
+        c.execute('DELETE FROM favorites WHERE username=%s AND tmdb_id=%s', (username, str(tmdb_id)))
 
 def get_favorites(username):
     with get_db() as conn:
-        return conn.execute(
-            'SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=?',
-            (username,)
-        ).fetchall()
+        c = conn.cursor()
+        c.execute('SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=%s', (username,))
+        return c.fetchall()
 
 
 # ==========================================
