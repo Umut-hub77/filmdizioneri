@@ -11,8 +11,6 @@ import hashlib
 import base64
 from contextlib import contextmanager
 from PIL import Image
-import psycopg2
-from psycopg2 import IntegrityError
 
 # ==========================================
 # SAYFA AYARLARI
@@ -32,10 +30,14 @@ TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "10e5fa6138c11560285b0c8af67e1376"
 DB_PATH = "nextwatch.db"
 MIN_PASSWORD_LEN = 6
 
+import psycopg2
+from psycopg2 import IntegrityError
+
 # ==========================================
-# VERİTABANI KATMANI (SQLite)
+# VERİTABANI KATMANI (ONLINE POSTGRESQL)
 # ==========================================
-DB_URL = st.secrets.get("DATABASE_URL")
+# Direkt bağlantı linkinizi kodun içine ekliyoruz
+DB_URL = "postgresql://neondb_owner:npg_zLQZ0ePdtu9c@ep-lively-hat-as1ya015.c-4.eu-central-1.aws.neon.tech/neondb?sslmode=require"
 
 @contextmanager
 def get_db():
@@ -48,10 +50,6 @@ def get_db():
         conn.close()
 
 def init_db():
-    if not DB_URL:
-        st.error("Veritabanı bağlantı linki bulunamadı! Lütfen Streamlit Secrets'a DATABASE_URL ekleyin.")
-        return
-        
     with get_db() as conn:
         c = conn.cursor()
         c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
@@ -127,7 +125,6 @@ def get_favorites(username):
         c = conn.cursor()
         c.execute('SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=%s', (username,))
         return c.fetchall()
-
 
 # ==========================================
 # OTURUM YÖNETİMİ
