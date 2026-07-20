@@ -671,7 +671,7 @@ def render_scrollable_strip(title: str, items: list):
         # NOT: target="_top" -> iframe içindeki link, Streamlit sayfasının tamamını
         # (üst pencereyi) yönlendirir. JS ile window.top.location değiştirmek yerine
         # native <a> linki kullanmak, tarayıcının sandbox/iframe kısıtlamalarına takılmaz.
-            if str(tmdb_id) in user_favs_set:
+        if str(tmdb_id) in user_favs_set:
             fav_btn = (
                 f'<a href="?action=remove_fav&id={tmdb_id}&u={urllib.parse.quote(current_user)}&tok={current_token}" '
                 f'target="_top" class="action-btn btn-fav-remove">❌ Favoriden Çıkar</a>'
