@@ -794,11 +794,48 @@ media_type = 'tv' if secim == "Dizi" else 'movie'
 if secim == "Favorilerim":
     st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
     if not st.session_state.logged_in:
-        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için sol üstten giriş yapmalısınız.")
+        st.info("Kendi favori listenizi oluşturmak ve işlem yapmak için sağ üstten giriş yapmalısınız.")
     else:
+        st.markdown("### 🔍 Hızlı Favori Ekle")
+        # Favoriler sekmesi içine özel arama çubuğu
+        fav_search = st.text_input("Listeye eklemek istediğiniz filmi veya diziyi arayın...", key="fav_search_input").strip()
+        
+        if fav_search:
+            # Sadece favoriler sayfasında arama yapar
+            search_results = get_tmdb_search(fav_search, TMDB_API_KEY, "multi")
+            filtered_results = [i for i in search_results if i.get('poster_path')][:5] # En iyi 5 sonucu gösterir
+            
+            if filtered_results:
+                for item in filtered_results:
+                    baslik = item.get('title') or item.get('name')
+                    tmdb_id = item.get('id')
+                    m_type = 'movie' if 'title' in item else 'tv'
+                    poster = item.get('poster_path')
+                    yil = (item.get('release_date') or item.get('first_air_date') or 'Bilinmiyor')[:4]
+                    
+                    # Her sonuç için yan yana isim ve buton gösterimi
+                    col_info, col_btn = st.columns([4, 1])
+                    with col_info:
+                        st.write(f"**{baslik}** ({yil})")
+                    with col_btn:
+                        is_already_fav = str(tmdb_id) in user_favs_set
+                        if is_already_fav:
+                            st.button("Eklendi ✔️", disabled=True, key=f"quick_added_{tmdb_id}")
+                        else:
+                            if st.button("➕ EKLE", key=f"quick_add_{tmdb_id}", type="primary"):
+                                add_favorite(st.session_state.username, tmdb_id, baslik, m_type, poster)
+                                st.toast(f"{baslik} başarıyla eklendi!")
+                                st.rerun() # Sayfayı anında yenileyip listeye yansıtır
+            else:
+                st.warning("Sonuç bulunamadı.")
+                
+        st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
+        st.markdown("### 🎬 Listeniz")
+        
+        # Mevcut favorileri listeleme
         fav_data = get_favorites(st.session_state.username)
         if not fav_data:
-            st.warning("Henüz favorilere eklenmiş bir yapım bulunmuyor. Keşfetmeye başlayın!")
+            st.info("Listeniz şu an boş. Yukarıdan arama yaparak eklemeye başlayabilirsiniz!")
         else:
             fav_items = [{"id": row[0], "title": row[1], "poster_path": row[3]} for row in fav_data]
             render_scrollable_strip(f"{st.session_state.username} adlı kullanıcının Favorileri", fav_items)
