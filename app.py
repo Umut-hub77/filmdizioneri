@@ -602,12 +602,6 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
 # ==========================================
 # KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
 # ==========================================
-# ==========================================
-# KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
-# ==========================================
-# ==========================================
-# KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
-# ==========================================
 def render_scrollable_strip(title: str, items: list):
     if not items:
         return
@@ -676,6 +670,7 @@ def render_scrollable_strip(title: str, items: list):
 
     html_content += "</div></body></html>"
     components.html(html_content, height=330, scrolling=False)
+    
 # --- Favori yönetimi: gerçek Streamlit widget'ı, iframe DIŞINDA ---
     if st.session_state.logged_in:
         item_map = {}
