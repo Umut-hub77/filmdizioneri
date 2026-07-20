@@ -788,9 +788,9 @@ elif secim == "Ne İzlesem?":
                 st.markdown(f"<p style='line-height:1.6; color:#a0aec0;'>{ozet}</p>", unsafe_allow_html=True)
 
                 render_hero_actions(
-                    watch_link, imdb_link, tmdb_id, safe_b, m_type, chosen.get('poster_path'),
-                    st.session_state.logged_in, str(tmdb_id) in user_favs_set
-                )
+    watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'),
+    st.session_state.logged_in, str(tmdb_id) in user_favs_set
+)
         else:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
