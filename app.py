@@ -6,11 +6,12 @@ import difflib
 import re
 import random
 import urllib.parse
-import sqlite3
 import hashlib
 import base64
 from contextlib import contextmanager
 from PIL import Image
+import psycopg2
+from psycopg2 import IntegrityError
 
 # ==========================================
 # SAYFA AYARLARI
@@ -22,41 +23,37 @@ except Exception:
 
 st.set_page_config(page_title="NextWatch", page_icon=_page_icon, layout="wide")
 
-# GÜVENLİK NOTU: API anahtarını kaynak kodun içine gömmek yerine
-# .streamlit/secrets.toml dosyasına koyup st.secrets ile okuyun.
-# Örnek secrets.toml içeriği: TMDB_API_KEY = "xxxx"
-# Böylece repo public olsa bile anahtar sızmaz.
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "10e5fa6138c11560285b0c8af67e1376")
-DB_PATH = "nextwatch.db"
 MIN_PASSWORD_LEN = 6
 
-import psycopg2
-from psycopg2 import IntegrityError
-
 # ==========================================
-# VERİTABANI KATMANI (ONLINE POSTGRESQL)
+# VERİTABANI KATMANI (POSTGRESQL - NEON)
 # ==========================================
-# Direkt bağlantı linkinizi kodun içine ekliyoruz
-DB_URL = "postgresql://neondb_owner:npg_zLQZ0ePdtu9c@ep-lively-hat-as1ya015.c-4.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+DB_URL = st.secrets.get(
+    "DATABASE_URL", 
+    "postgresql://neondb_owner:npg_zLQZ0ePdtu9c@ep-lively-hat-as1ya015.c-4.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+)
 
 @contextmanager
 def get_db():
-    """Tüm DB işlemleri için tek noktadan online bağlantı yönetimi."""
+    """Tüm DB işlemleri için güvenli bağlantı. İşlem bitince mutlaka commit atar ve kapanır."""
     conn = psycopg2.connect(DB_URL)
     try:
         yield conn
         conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
     finally:
         conn.close()
 
 def init_db():
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
-        c.execute('''CREATE TABLE IF NOT EXISTS favorites
-                     (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
-                      UNIQUE(username, tmdb_id))''')
-
+        with conn.cursor() as c:
+            c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
+            c.execute('''CREATE TABLE IF NOT EXISTS favorites
+                         (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
+                          UNIQUE(username, tmdb_id))''')
 init_db()
 
 def make_hashes(password: str) -> str:
@@ -67,9 +64,9 @@ def check_hashes(password: str, hashed_text: str) -> bool:
 
 def make_session_token(username: str) -> str:
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute('SELECT password FROM users WHERE username=%s', (username,))
-        row = c.fetchone()
+        with conn.cursor() as c:
+            c.execute('SELECT password FROM users WHERE username=%s', (username,))
+            row = c.fetchone()
     if not row:
         return ""
     return hashlib.sha256((username + row[0]).encode()).hexdigest()[:16]
@@ -80,89 +77,82 @@ def verify_session_token(username: str, token: str) -> bool:
 def add_user(username: str, password: str) -> bool:
     try:
         with get_db() as conn:
-            c = conn.cursor()
-            c.execute('INSERT INTO users (username, password) VALUES (%s, %s)',
-                      (username, make_hashes(password)))
+            with conn.cursor() as c:
+                c.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, make_hashes(password)))
         return True
     except IntegrityError:
         return False
 
 def login_user(username: str, password: str) -> bool:
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute('SELECT password FROM users WHERE username=%s', (username,))
-        row = c.fetchone()
+        with conn.cursor() as c:
+            c.execute('SELECT password FROM users WHERE username=%s', (username,))
+            row = c.fetchone()
     return bool(row) and check_hashes(password, row[0])
 
 def get_profile_pic(username):
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute('SELECT profile_pic FROM users WHERE username=%s', (username,))
-        row = c.fetchone()
+        with conn.cursor() as c:
+            c.execute('SELECT profile_pic FROM users WHERE username=%s', (username,))
+            row = c.fetchone()
     return row[0] if row and row[0] else None
 
 def set_profile_pic(username, b64_data):
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute('UPDATE users SET profile_pic=%s WHERE username=%s', (b64_data, username))
+        with conn.cursor() as c:
+            c.execute('UPDATE users SET profile_pic=%s WHERE username=%s', (b64_data, username))
 
 def add_favorite(username, tmdb_id, title, media_type, poster_path):
     try:
         with get_db() as conn:
-            c = conn.cursor()
-            c.execute('INSERT INTO favorites (username, tmdb_id, title, media_type, poster_path) VALUES (%s, %s, %s, %s, %s)',
-                      (username, str(tmdb_id), title, media_type, poster_path))
+            with conn.cursor() as c:
+                c.execute('INSERT INTO favorites (username, tmdb_id, title, media_type, poster_path) VALUES (%s, %s, %s, %s, %s)',
+                          (username, str(tmdb_id), title, media_type, poster_path))
     except IntegrityError:
-        pass  # Zaten favorilerde
+        pass
+    except Exception as e:
+        st.error(f"Kayıt Hatası: {e}")
 
 def remove_favorite(username, tmdb_id):
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute('DELETE FROM favorites WHERE username=%s AND tmdb_id=%s', (username, str(tmdb_id)))
+        with conn.cursor() as c:
+            c.execute('DELETE FROM favorites WHERE username=%s AND tmdb_id=%s', (username, str(tmdb_id)))
 
 def get_favorites(username):
     with get_db() as conn:
-        c = conn.cursor()
-        c.execute('SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=%s', (username,))
-        return c.fetchall()
+        with conn.cursor() as c:
+            c.execute('SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=%s', (username,))
+            return c.fetchall()
 
 # ==========================================
-# OTURUM YÖNETİMİ
+# OTURUM YÖNETİMİ & URL İLE FAVORİ YAKALAMA
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
 
-# --- URL PARAMETRELERİ İLE HTML'DEN TETİKLENEN FAVORİ İŞLEMLERİ ---
 if "action" in st.query_params:
-    action = st.query_params["action"]
-
-    # Iframe içindeki linkler tam sayfa yenilemesine sebep olduğu için
-    # session_state sıfırlanmış olabilir. Token doğruysa oturumu sessizce geri yükle.
-    if not st.session_state.logged_in:
-        qp_user = st.query_params.get("u")
-        qp_tok = st.query_params.get("tok")
-        if verify_session_token(qp_user, qp_tok):
-            st.session_state.logged_in = True
-            st.session_state.username = qp_user
+    action = st.query_params.get("action")
+    qp_user = st.query_params.get("u")
+    qp_tok = st.query_params.get("tok")
+    
+    # Oturum düştüyse (tam sayfa yenilemesi olduysa) token ile geri al
+    if not st.session_state.logged_in and verify_session_token(qp_user, qp_tok):
+        st.session_state.logged_in = True
+        st.session_state.username = qp_user
 
     if st.session_state.logged_in:
         fav_id = st.query_params.get("id")
         if action == "add_fav":
-            add_favorite(
-                st.session_state.username,
-                fav_id,
-                st.query_params.get("title"),
-                st.query_params.get("type"),
-                st.query_params.get("poster"),
-            )
-            st.toast("Favorilere eklendi!")
+            add_favorite(st.session_state.username, fav_id, st.query_params.get("title"), st.query_params.get("type"), st.query_params.get("poster"))
+            st.toast("✅ Favorilere eklendi!")
         elif action == "remove_fav":
             remove_favorite(st.session_state.username, fav_id)
-            st.toast("Favorilerden çıkarıldı!")
+            st.toast("🗑️ Favorilerden çıkarıldı!")
     else:
         st.warning("Favori işlemi için giriş yapmalısınız!")
 
+    # URL'yi temizle ve UI'ı güncelle
     st.query_params.clear()
     st.rerun()
 
@@ -172,126 +162,62 @@ if st.session_state.logged_in:
 
 
 # ==========================================
-# STİL
+# STİL (Yükleme Kararması Engellendi)
 # ==========================================
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;600;700;900&display=swap');
 
 html, body, [class*="css"] { font-family: 'Montserrat', sans-serif !important; }
-
 .block-container { padding-top: 2rem; max-width: 1300px; }
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
+#MainMenu, footer, header {visibility: hidden;}
+section[data-testid="stSidebar"], div[data-testid="collapsedControl"] { display: none !important; }
 
-/* Sidebar tamamen kaldırıldı, giriş/profil artık sağ üstte */
-section[data-testid="stSidebar"] { display: none !important; }
-div[data-testid="collapsedControl"] { display: none !important; }
+/* Spinner karartmasını iptal et */
+.stApp, [data-testid="stAppViewContainer"] { opacity: 1 !important; filter: none !important; transition: none !important; }
+div[data-testid="stStatusWidget"], div[data-testid="stSpinner"], .stSpinner { background: transparent !important; box-shadow: none !important; }
 
-div[data-testid="stStatusWidget"], div[data-testid="stSpinner"], .stSpinner {
-    display: none !important; visibility: hidden !important;
-}
+.sub-title { text-align: left; color: #a0aec0; font-size: 1.1rem; margin-top: 5px; margin-bottom: 30px; font-weight: 400; }
 
-.sub-title {
-    text-align: left; color: #a0aec0; font-size: 1.1rem;
-    margin-top: 5px; margin-bottom: 30px; font-weight: 400;
+div[data-testid="stButton"] button, button[data-testid^="stBaseButton"] {
+    border-radius: 8px !important; font-weight: 600 !important; letter-spacing: 0.3px !important; transition: all 0.2s ease !important; width: 100% !important;
 }
-
-div[data-testid="stButton"] button,
-button[data-testid^="stBaseButton"] {
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.3px !important;
-    transition: all 0.2s ease !important;
-    width: 100% !important;
+div[data-testid="stButton"] button[kind="secondary"], button[data-testid="stBaseButton-secondary"] {
+    background: transparent !important; border: 1px solid transparent !important; color: #8c8c8c !important; box-shadow: none !important; text-transform: none !important;
 }
-
-div[data-testid="stButton"] button[kind="secondary"],
-button[data-testid="stBaseButton-secondary"] {
-    background: transparent !important;
-    border: 1px solid transparent !important;
-    color: #8c8c8c !important;
-    box-shadow: none !important;
-    text-transform: none !important;
+div[data-testid="stButton"] button[kind="secondary"]:hover, button[data-testid="stBaseButton-secondary"]:hover {
+    color: #ffffff !important; background: rgba(255,255,255,0.06) !important;
 }
-div[data-testid="stButton"] button[kind="secondary"]:hover,
-button[data-testid="stBaseButton-secondary"]:hover {
-    color: #ffffff !important;
-    background: rgba(255,255,255,0.06) !important;
+div[data-testid="stButton"] button[kind="primary"], button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(135deg, #E50914, #a8050d) !important; border: none !important; color: #ffffff !important; box-shadow: 0 0 16px rgba(229,9,20,0.55) !important;
 }
-
-div[data-testid="stButton"] button[kind="primary"],
-button[data-testid="stBaseButton-primary"] {
-    background: linear-gradient(135deg, #E50914, #a8050d) !important;
-    border: none !important;
-    color: #ffffff !important;
-    box-shadow: 0 0 16px rgba(229,9,20,0.55) !important;
+div[data-testid="stButton"] button[kind="primary"]:hover, button[data-testid="stBaseButton-primary"]:hover {
+    box-shadow: 0 0 26px rgba(229,9,20,0.85) !important; transform: translateY(-1px) !important;
 }
-div[data-testid="stButton"] button[kind="primary"]:hover,
-button[data-testid="stBaseButton-primary"]:hover {
-    box-shadow: 0 0 26px rgba(229,9,20,0.85) !important;
-    transform: translateY(-1px) !important;
-}
-
-.top-menu-row div[data-testid="stButton"] button {
-    padding: 12px 10px !important; font-size: 1rem !important;
-}
+.top-menu-row div[data-testid="stButton"] button { padding: 12px 10px !important; font-size: 1rem !important; }
 
 .stTextInput > div > div > input { font-size: 1.1rem !important; padding: 12px 20px !important; }
-div[data-baseweb="input"] {
-    border-radius: 8px !important; border: 1px solid #333 !important;
-    background-color: #141414 !important; transition: all 0.3s ease;
-}
-div[data-baseweb="input"]:focus-within {
-    border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important;
-}
+div[data-baseweb="input"] { border-radius: 8px !important; border: 1px solid #333 !important; background-color: #141414 !important; transition: all 0.3s ease; }
+div[data-baseweb="input"]:focus-within { border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important; }
 
-/* --- Sağ üstten ekranın üst-orta kısmına taşındı --- */
 div[data-testid="stPopover"] {
-    position: fixed !important;
-    top: 15px !important;       /* Üstten mesafe */
-    left: 50% !important;       /* Yatayda ortaya al */
-    transform: translateX(-50%) !important; /* Tam merkeze hizala */
-    z-index: 9999;
+    position: fixed !important; top: 15px !important; left: 50% !important; transform: translateX(-50%) !important; z-index: 9999;
 }
 div[data-testid="stPopover"] > div > button {
-    width: 46px !important;
-    height: 46px !important;
-    min-width: 46px !important;
-    border-radius: 50% !important;
-    padding: 0 !important;
-    background: linear-gradient(135deg, #E50914, #a8050d) !important;
-    border: 2px solid rgba(255,255,255,0.18) !important;
-    box-shadow: 0 0 14px rgba(229,9,20,0.55) !important;
-    color: #ffffff !important;
-    font-weight: 700 !important;
-    font-size: 1.05rem !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    overflow: hidden !important;
+    width: 46px !important; height: 46px !important; min-width: 46px !important; border-radius: 50% !important; padding: 0 !important;
+    background: linear-gradient(135deg, #E50914, #a8050d) !important; border: 2px solid rgba(255,255,255,0.18) !important;
+    box-shadow: 0 0 14px rgba(229,9,20,0.55) !important; color: #ffffff !important; font-weight: 700 !important; font-size: 1.05rem !important;
+    display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important;
 }
-div[data-testid="stPopover"] > div > button:hover {
-    box-shadow: 0 0 22px rgba(229,9,20,0.85) !important;
-    transform: translateY(-1px);
-}
+div[data-testid="stPopover"] > div > button:hover { box-shadow: 0 0 22px rgba(229,9,20,0.85) !important; transform: translateY(-1px); }
 
-/* --- Detay sayfası (Ne İzlesem?) aksiyon butonları --- */
 .hero-actions { display:flex; gap:14px; margin: 18px 0 6px 0; flex-wrap: wrap; }
 .hero-btn {
-    background: linear-gradient(135deg, #E50914, #a8050d);
-    color: #ffffff !important; text-decoration: none !important;
-    padding: 12px 26px; border-radius: 8px; font-weight: 700; font-size: 0.9rem;
-    letter-spacing: 0.4px; text-transform: uppercase;
-    box-shadow: 0 0 16px rgba(229,9,20,0.55);
-    transition: all 0.2s ease; display: inline-block;
+    background: linear-gradient(135deg, #E50914, #a8050d); color: #ffffff !important; text-decoration: none !important;
+    padding: 12px 26px; border-radius: 8px; font-weight: 700; font-size: 0.9rem; letter-spacing: 0.4px; text-transform: uppercase;
+    box-shadow: 0 0 16px rgba(229,9,20,0.55); transition: all 0.2s ease; display: inline-block;
 }
 .hero-btn:hover { box-shadow: 0 0 26px rgba(229,9,20,0.85); transform: translateY(-2px); }
-.hero-btn-active {
-    background: linear-gradient(135deg, #2b2b2b, #141414);
-    border: 1px solid #E50914; box-shadow: none;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -300,17 +226,13 @@ div[data-testid="stPopover"] > div > button:hover {
 # SAĞ ÜST PROFİL / GİRİŞ ROZETİ
 # ==========================================
 def render_profile_corner():
-    # Profil fotoğrafı varsa, popover tetikleyici butonunun arka planına basıyoruz
     if st.session_state.logged_in:
         pic = get_profile_pic(st.session_state.username)
         if pic:
             st.markdown(f"""
             <style>
             div[data-testid="stPopover"] > div > button {{
-                background-image: url("data:image/png;base64,{pic}") !important;
-                background-size: cover !important;
-                background-position: center !important;
-                color: transparent !important;
+                background-image: url("data:image/png;base64,{pic}") !important; background-size: cover !important; background-position: center !important; color: transparent !important;
             }}
             </style>
             """, unsafe_allow_html=True)
@@ -343,8 +265,6 @@ def render_profile_corner():
                         st.error("Kullanıcı adı veya şifre hatalı!")
         else:
             st.markdown(f"### Merhaba, **{st.session_state.username}**")
-
-            # Sekmeler ile menü düzeni
             tab1, tab2 = st.tabs(["👤 Profil & Ayarlar", "⚙️ Hesap"])
 
             with tab1:
@@ -353,15 +273,11 @@ def render_profile_corner():
                     b64 = base64.b64encode(uploaded.read()).decode()
                     set_profile_pic(st.session_state.username, b64)
                     st.rerun()
-                st.caption("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
-
             with tab2:
                 if st.button("Çıkış Yap", key="logout_corner", use_container_width=True):
                     st.session_state.logged_in = False
                     st.session_state.username = ""
                     st.rerun()
-
-
 render_profile_corner()
 
 
@@ -382,7 +298,6 @@ def load_imdb_data():
     except Exception:
         return pd.DataFrame()
 
-
 @st.cache_data(ttl=3600)
 def get_imdb_id(tmdb_id, media_type):
     try:
@@ -390,20 +305,17 @@ def get_imdb_id(tmdb_id, media_type):
         res = requests.get(url, params={'api_key': TMDB_API_KEY}, timeout=3)
         if res.status_code == 200:
             return res.json().get('imdb_id')
-    except requests.RequestException:
+    except:
         pass
     return None
 
-
 @st.cache_data(ttl=3600)
 def get_tmdb_trailer_key(tmdb_id, media_type):
-    """Resmi YouTube fragman anahtarını döner (varsa)."""
     url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos"
     try:
         res = requests.get(url, params={'api_key': TMDB_API_KEY, 'language': 'tr-TR'}, timeout=3)
         if res.status_code == 200:
             results = res.json().get('results', [])
-            # tr-TR'de bulunamazsa İngilizce videoları dene
             if not results:
                 res = requests.get(url, params={'api_key': TMDB_API_KEY}, timeout=3)
                 results = res.json().get('results', []) if res.status_code == 200 else []
@@ -413,10 +325,9 @@ def get_tmdb_trailer_key(tmdb_id, media_type):
             for v in results:
                 if v.get('site') == 'YouTube':
                     return v.get('key')
-    except requests.RequestException:
+    except:
         pass
     return None
-
 
 @st.cache_data(ttl=3600)
 def get_tmdb_genres(api_key: str, media_type: str):
@@ -425,10 +336,9 @@ def get_tmdb_genres(api_key: str, media_type: str):
         resp = requests.get(url, params={'api_key': api_key, 'language': 'tr-TR'}, timeout=5)
         if resp.status_code == 200:
             return resp.json().get('genres', [])
-    except requests.RequestException:
+    except:
         pass
     return []
-
 
 @st.cache_data(ttl=3600)
 def get_tmdb_search(query: str, api_key: str, media_type: str = "multi"):
@@ -438,27 +348,21 @@ def get_tmdb_search(query: str, api_key: str, media_type: str = "multi"):
         response = requests.get(url, params=params, timeout=5)
         if response.status_code == 200:
             return response.json().get('results', [])
-    except requests.RequestException:
+    except:
         pass
     return []
-
 
 @st.cache_data(ttl=3600)
 def get_tmdb_discover_by_genre(genre_id: str, api_key: str, media_type: str, limit: int = 15):
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
-    params = {
-        'api_key': api_key, 'language': 'tr-TR', 'with_genres': genre_id,
-        'without_genres': '16' if '10759' in genre_id or '28' in genre_id else '',
-        'sort_by': 'vote_average.desc', 'vote_count.gte': 500, 'page': 1
-    }
+    params = {'api_key': api_key, 'language': 'tr-TR', 'with_genres': genre_id, 'without_genres': '16' if '10759' in genre_id or '28' in genre_id else '', 'sort_by': 'vote_average.desc', 'vote_count.gte': 500, 'page': 1}
     try:
         resp = requests.get(url, params=params, timeout=5)
         if resp.status_code == 200:
             return resp.json().get('results', [])[:limit]
-    except requests.RequestException:
+    except:
         pass
     return []
-
 
 @st.cache_data(ttl=3600)
 def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movie', limit: int = 15):
@@ -475,18 +379,14 @@ def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movi
         rec_resp = requests.get(rec_url, params={'api_key': api_key, 'language': 'tr-TR'}, timeout=5)
         if rec_resp.status_code == 200:
             return rec_resp.json().get('results', [])[:limit]
-    except requests.RequestException:
+    except:
         pass
     return None
 
-
-@st.cache_data(ttl=0)  # kasıtlı: her seferinde farklı bir öneri gelsin diye önbelleklenmiyor
+@st.cache_data(ttl=0)
 def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
     url = f"https://api.themoviedb.org/3/discover/{media_type}"
-    base_params = {
-        'api_key': api_key, 'with_genres': genre_id, 'language': 'tr-TR',
-        'sort_by': 'vote_average.desc', 'include_adult': 'false', 'without_genres': '99',
-    }
+    base_params = {'api_key': api_key, 'with_genres': genre_id, 'language': 'tr-TR', 'sort_by': 'vote_average.desc', 'include_adult': 'false', 'without_genres': '99'}
     quality_tiers = [(6.8, 600), (6.5, 250), (6.2, 80), (6.0, 30)]
     for min_rating, min_votes in quality_tiers:
         params = {**base_params, 'vote_average.gte': min_rating, 'vote_count.gte': min_votes}
@@ -500,23 +400,17 @@ def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
             results = [i for i in resp.get('results', []) if i.get('poster_path') and i.get('overview')]
             if results:
                 return random.choice(results)
-        except requests.RequestException:
+        except:
             continue
     return None
-
 
 def render_hero_poster(poster_url, trailer_key):
     tpl = """
     <!DOCTYPE html><html><head><style>
     body { margin:0; padding:0; background:transparent; overflow:hidden; font-family:'Montserrat',sans-serif; }
-    .hero-poster {
-        position:relative; width:280px; height:400px; border-radius:10px; overflow:hidden;
-        cursor:pointer; background:#111; margin: 0 auto;
-    }
+    .hero-poster { position:relative; width:280px; height:400px; border-radius:10px; overflow:hidden; cursor:pointer; background:#111; margin: 0 auto; }
     .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .2s; }
-    /* Siyah arka planı kaldırdık ki başlangıçta afişi kapatmasın */
     .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
-    /* Sadece video oynarken aktif olacak sınıf */
     .hero-video-box.active { pointer-events:auto; background:black; }
     .hero-video-box iframe { width:100%; height:100%; border:0; }
     </style></head><body>
@@ -534,17 +428,13 @@ def render_hero_poster(poster_url, trailer_key):
     var isPlaying = false;
 
     poster.addEventListener('click', function() {
-        if (!trailerKey) return; // Fragman yoksa hiçbir şey yapma
-
+        if (!trailerKey) return;
         if (!isPlaying) {
-            // Tıklandığında video kutusunu aktif et, videoyu ekle ve afişi gizle
             box.classList.add('active');
-            box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
-                '?autoplay=1&controls=1&modestbranding=1&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+            box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey + '?autoplay=1&controls=1&modestbranding=1&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
             img.style.opacity = '0';
             isPlaying = true;
         } else {
-            // Tekrar tıklanırsa videoyu kapat, afişi geri getir
             box.classList.remove('active');
             box.innerHTML = '';
             img.style.opacity = '1';
@@ -554,16 +444,10 @@ def render_hero_poster(poster_url, trailer_key):
     </script>
     </body></html>
     """
-
-    html_out = (tpl.replace("__POSTER_URL__", poster_url)
-                   .replace("__TRAILER_KEY__", trailer_key or ""))
-
+    html_out = (tpl.replace("__POSTER_URL__", poster_url).replace("__TRAILER_KEY__", trailer_key or ""))
     components.html(html_out, height=420, scrolling=False)
 
-
 def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, poster_path, is_logged_in, is_fav):
-    # İZLE ve IMDb linkleri harici sitelere gittiği için (target="_blank")
-    # bunlarda sorun yok, session state'i etkilemiyorlar.
     st.markdown(f"""
     <div class="hero-actions">
       <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">İZLE</a>
@@ -571,9 +455,6 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
     </div>
     """, unsafe_allow_html=True)
 
-    # Favori butonu gerçek bir Streamlit butonu (bu fonksiyon iframe içinde değil,
-    # doğrudan ana sayfada render ediliyor, o yüzden Python'a direkt erişebiliyoruz).
-    # Böylece sayfa tam yenilenmiyor, session_state (giriş bilgisi) korunuyor.
     if is_logged_in:
         fcol, _ = st.columns([1, 3])
         with fcol:
@@ -583,7 +464,7 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
                     st.toast("Favorilerden çıkarıldı!")
                     st.rerun()
             else:
-                if st.button("Favoriye Ekle", key=f"fav_add_{tmdb_id}", type="primary", use_container_width=True):
+                if st.button("Favoriye Ekle ❤️", key=f"fav_add_{tmdb_id}", type="primary", use_container_width=True):
                     add_favorite(st.session_state.username, tmdb_id, real_title, m_type, poster_path)
                     st.toast("Favorilere eklendi!")
                     st.rerun()
@@ -595,9 +476,10 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
 # KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
 # ==========================================
 def render_scrollable_strip(title: str, items: list):
-    if not items:
-        return
+    if not items: return
     container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
+    
+    tok = make_session_token(st.session_state.username) if st.session_state.logged_in else ""
 
     html_content = f"""
     <!DOCTYPE html>
@@ -606,27 +488,17 @@ def render_scrollable_strip(title: str, items: list):
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap');
     body {{ margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; background: transparent; overflow: hidden; }}
-    .header {{
-        display: flex; justify-content: space-between; align-items: center; gap: 10px;
-        margin-bottom: 15px; padding: 10px 15px; background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }}
+    .header {{ display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 15px; padding: 10px 15px; background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
     .header h3 {{ margin: 0; font-size: 1.2rem; font-weight: 700; color: #141414; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     .nav-buttons {{ display: flex; gap: 6px; }}
-    .nav-btn {{
-        background: rgba(255,255,255,0.06); border: 1px solid rgba(0,0,0,0.08); color: #141414; width: 32px; height: 26px;
-        border-radius: 6px; cursor: pointer; transition: 0.25s; font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
-    }}
+    .nav-btn {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(0,0,0,0.08); color: #141414; width: 32px; height: 26px; border-radius: 6px; cursor: pointer; transition: 0.25s; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }}
     .nav-btn:hover {{ background: #E50914; color: #ffffff; border-color: #E50914; }}
     .scroll-container {{ display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; scrollbar-width: none; }}
     .scroll-container::-webkit-scrollbar {{ display: none; }}
     .movie-card {{ flex: 0 0 140px; width: 140px; display: flex; flex-direction: column; }}
     .poster-box {{ position: relative; width: 100%; height: 210px; border-radius: 6px; overflow: hidden; cursor: pointer; }}
     .poster-img {{ width: 100%; height: 100%; object-fit: cover; transition: 0.3s; }}
-    .hover-overlay {{
-        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
-        justify-content: center; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: 0.3s;
-    }}
+    .hover-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: 0.3s; }}
     .show-overlay {{ opacity: 1 !important; pointer-events: auto !important; }}
     .action-btn {{ padding: 6px 10px; border-radius: 4px; text-decoration: none !important; font-size: 0.7rem; font-weight: bold; width: 85%; text-align: center; box-sizing: border-box; cursor: pointer; }}
     .btn-red {{ background: #E50914; color: white !important; }}
@@ -650,33 +522,30 @@ def render_scrollable_strip(title: str, items: list):
         baslik = row.get('title') or row.get('name')
         poster_path = row.get('poster_path')
         tmdb_id = row.get('id')
-        if not poster_path or not tmdb_id:
-            continue
+        if not poster_path or not tmdb_id: continue
 
         safe_baslik = urllib.parse.quote(baslik)
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         m_type_guess = 'movie' if 'title' in row else 'tv'
-
         imdb_id = get_imdb_id(tmdb_id, m_type_guess)
         imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
 
-        # NOT: Favori ekleme/çıkarma artık bu iframe içinde YOK. Streamlit Cloud'da
-        # components.html() iframe'inin sandbox/origin davranışı deploy'a göre
-        # değişebiliyor; window.top.location üzerinden zorla yönlendirme bazı
-        # ortamlarda güvenlik kısıtlamalarına takılıp uygulamayı kendi içine
-        # yanlışlıkla yeniden yüklüyordu (çift/iç içe render sorunu). Bu yüzden
-        # favori kontrolü, şeridin ALTINDA gerçek bir Streamlit widget'ı olarak
-        # (bkz. fonksiyonun sonundaki multiselect) veriliyor — iframe sınırını
-        # hiç aşmaya gerek kalmıyor.
+        fav_btn_html = ""
+        if st.session_state.logged_in:
+            if str(tmdb_id) in user_favs_set:
+                fav_btn_html = f'<a href="?action=remove_fav&id={tmdb_id}&u={st.session_state.username}&tok={tok}" target="_top" class="action-btn btn-fav-remove">FAVORİDEN ÇIKAR</a>'
+            else:
+                fav_btn_html = f'<a href="?action=add_fav&id={tmdb_id}&title={safe_baslik}&type={m_type_guess}&poster={poster_path}&u={st.session_state.username}&tok={tok}" target="_top" class="action-btn btn-fav-add">FAVORİYE EKLE ❤️</a>'
+
         html_content += f"""
         <div class="movie-card">
         <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
         <img src="{image_url}" class="poster-img">
         <div class="hover-overlay">
-          <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
-          <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
-          <!-- Favori butonu burada yok! -->
+        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
+        <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
+        {fav_btn_html}
         </div>
         </div>
         </div>
@@ -684,58 +553,6 @@ def render_scrollable_strip(title: str, items: list):
 
     html_content += "</div></body></html>"
     components.html(html_content, height=330, scrolling=False)
-
-# --- Favori yönetimi: gerçek Streamlit widget'ı, iframe DIŞINDA ---
-    if st.session_state.logged_in:
-        item_map = {}
-        for row in items:
-            baslik = row.get('title') or row.get('name')
-            poster_path = row.get('poster_path')
-            tmdb_id = row.get('id')
-            if not poster_path or not tmdb_id:
-                continue
-            m_type_guess = 'movie' if 'title' in row else 'tv'
-            
-            # Aynı isimli filmlerin birbirini ezmesini engellemek için ID'yi de ekliyoruz
-            label = f"{baslik} ({tmdb_id})"
-            item_map[label] = (str(tmdb_id), baslik, m_type_guess, poster_path)
-
-        if item_map:
-            default_selected = [label for label, (tid, *_r) in item_map.items() if tid in user_favs_set]
-            widget_key = f"favsel_{container_id}"
-
-            # Seçim değiştiğinde tetiklenecek güvenli fonksiyon
-            def fav_selection_changed(w_key, current_map, old_favs):
-                new_selection = st.session_state[w_key]
-                
-                for lbl, (tid, baslik, mtype, poster) in current_map.items():
-                    is_selected_now = lbl in new_selection
-                    was_fav_before = tid in old_favs
-                    
-                    if is_selected_now and not was_fav_before:
-                        add_favorite(st.session_state.username, tid, baslik, mtype, poster)
-                    elif not is_selected_now and was_fav_before:
-                        remove_favorite(st.session_state.username, tid)
-
-            # Arayüz aracı (Widget)
-            st.multiselect(
-                "❤️ Bu listeden favorilere eklemek/çıkarmak istediklerinizi seçin:",
-                options=list(item_map.keys()),
-                default=default_selected,
-                key=widget_key,
-                on_change=fav_selection_changed,
-                kwargs={"w_key": widget_key, "current_map": item_map, "old_favs": user_favs_set}
-            )
-
-            if set(selected) != set(default_selected):
-                for label, (tid, baslik, mtype, poster) in item_map.items():
-                    is_selected_now = label in selected
-                    was_fav_before = tid in user_favs_set
-                    if is_selected_now and not was_fav_before:
-                        add_favorite(st.session_state.username, tid, baslik, mtype, poster)
-                    elif not is_selected_now and was_fav_before:
-                        remove_favorite(st.session_state.username, tid)
-                st.rerun()
 
 
 # ==========================================
@@ -745,9 +562,7 @@ logo_svg = """
 <svg width="340" height="60" viewBox="0 0 340 60" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="glowRed" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff3366" />
-      <stop offset="50%" stop-color="#E50914" />
-      <stop offset="100%" stop-color="#8a0000" />
+      <stop offset="0%" stop-color="#ff3366" /><stop offset="50%" stop-color="#E50914" /><stop offset="100%" stop-color="#8a0000" />
     </linearGradient>
     <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#E50914" flood-opacity="0.55"/>
@@ -765,16 +580,14 @@ logo_svg = """
 st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
 
-if "secim" not in st.session_state:
-    st.session_state.secim = "Film"
+if "secim" not in st.session_state: st.session_state.secim = "Film"
 
 st.markdown('<div class="top-menu-row">', unsafe_allow_html=True)
 menu_items = ["Film", "Dizi", "Belgesel", "Ne İzlesem?", "Favorilerim"]
 menu_cols = st.columns(len(menu_items))
 for col, item in zip(menu_cols, menu_items):
     with col:
-        if st.button(item, key=f"menu_{item}", use_container_width=True,
-                     type="primary" if st.session_state.secim == item else "secondary"):
+        if st.button(item, key=f"menu_{item}", use_container_width=True, type="primary" if st.session_state.secim == item else "secondary"):
             st.session_state.secim = item
             st.rerun()
 st.markdown('</div>', unsafe_allow_html=True)
@@ -782,7 +595,6 @@ st.markdown('</div>', unsafe_allow_html=True)
 secim = st.session_state.secim
 media_type = 'tv' if secim == "Dizi" else 'movie'
 
-# --- FAVORİLERİM SEKMESİ ---
 if secim == "Favorilerim":
     st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
     if not st.session_state.logged_in:
@@ -795,24 +607,20 @@ if secim == "Favorilerim":
             fav_items = [{"id": row[0], "title": row[1], "poster_path": row[3]} for row in fav_data]
             render_scrollable_strip(f"{st.session_state.username} adlı kullanıcının Favorileri", fav_items)
 
-# --- NE İZLESEM SEKMESİ ---
 elif secim == "Ne İzlesem?":
     st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
     st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
 
-    if "tur_tipi" not in st.session_state:
-        st.session_state.tur_tipi = "Film"
+    if "tur_tipi" not in st.session_state: st.session_state.tur_tipi = "Film"
     st.markdown("<p style='color:#8c8c8c; font-weight:600; font-size:0.85rem; text-transform:uppercase;'>Format</p>", unsafe_allow_html=True)
 
     fcol1, fcol2, _spacer = st.columns([1, 1, 4])
     with fcol1:
-        if st.button("Film", key="format_film", use_container_width=True,
-                     type="primary" if st.session_state.tur_tipi == "Film" else "secondary"):
+        if st.button("Film", key="format_film", use_container_width=True, type="primary" if st.session_state.tur_tipi == "Film" else "secondary"):
             st.session_state.tur_tipi = "Film"
             st.rerun()
     with fcol2:
-        if st.button("Dizi", key="format_dizi", use_container_width=True,
-                     type="primary" if st.session_state.tur_tipi == "Dizi" else "secondary"):
+        if st.button("Dizi", key="format_dizi", use_container_width=True, type="primary" if st.session_state.tur_tipi == "Dizi" else "secondary"):
             st.session_state.tur_tipi = "Dizi"
             st.rerun()
 
@@ -849,15 +657,10 @@ elif secim == "Ne İzlesem?":
                 st.markdown(f"<h1 style='font-weight:700;'>{baslik} ({yil})</h1>", unsafe_allow_html=True)
                 st.markdown(f"**TMDb Puanı:** `{puan} / 10`")
                 st.markdown(f"<p style='line-height:1.6; color:#a0aec0;'>{ozet}</p>", unsafe_allow_html=True)
-
-                render_hero_actions(
-                    watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'),
-                    st.session_state.logged_in, str(tmdb_id) in user_favs_set
-                )
+                render_hero_actions(watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'), st.session_state.logged_in, str(tmdb_id) in user_favs_set)
         else:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
-# --- FİLM / DİZİ / BELGESEL KEŞİF ve ARAMA ---
 else:
     search_query = st.text_input("Arama", placeholder="🔍 Ne izlemek istiyorsunuz? (Örn. Matrix)").strip()
 
@@ -867,44 +670,32 @@ else:
         search_results = get_tmdb_search(search_query, TMDB_API_KEY, search_type)
         filtered_search = [i for i in search_results if i.get('poster_path')]
 
-        if filtered_search:
-            render_scrollable_strip("Sonuçlar", filtered_search)
-        else:
-            st.warning("Maalesef aradığınız kriterlere uygun bir sonuç bulunamadı.")
+        if filtered_search: render_scrollable_strip("Sonuçlar", filtered_search)
+        else: st.warning("Maalesef aradığınız kriterlere uygun bir sonuç bulunamadı.")
 
         df_all = load_imdb_data()
         matched_imdb_id = None
         if not df_all.empty:
-            if secim == "Film":
-                df = df_all[(df_all['type'] == 'movie') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
-            elif secim == "Dizi":
-                df = df_all[(df_all['type'] == 'tv') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
-            else:
-                df = df_all[df_all['genres'].str.contains('Documentary', case=False, na=False)]
+            if secim == "Film": df = df_all[(df_all['type'] == 'movie') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
+            elif secim == "Dizi": df = df_all[(df_all['type'] == 'tv') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
+            else: df = df_all[df_all['genres'].str.contains('Documentary', case=False, na=False)]
 
-            titles_lower = df['primaryTitle'].str.lower()
-            exact_matches = df[titles_lower == search_query.lower()]
-
+            exact_matches = df[df['primaryTitle'].str.lower() == search_query.lower()]
             if not exact_matches.empty:
                 best_match = exact_matches.sort_values(by='numVotes', ascending=False).iloc[0]
-                matched_title = best_match['primaryTitle']
-                matched_imdb_id = best_match['tconst']
+                matched_title, matched_imdb_id = best_match['primaryTitle'], best_match['tconst']
             else:
                 popular_df = df[df['numVotes'] > 1000]
-                titles = popular_df['primaryTitle'].tolist()
-                matches = difflib.get_close_matches(search_query, titles, n=1, cutoff=0.6)
+                matches = difflib.get_close_matches(search_query, popular_df['primaryTitle'].tolist(), n=1, cutoff=0.6)
                 if matches:
-                    chosen_title = matches[0]
-                    best_match = df[df['primaryTitle'] == chosen_title].sort_values(by='numVotes', ascending=False).iloc[0]
-                    matched_title = best_match['primaryTitle']
-                    matched_imdb_id = best_match['tconst']
+                    best_match = df[df['primaryTitle'] == matches[0]].sort_values(by='numVotes', ascending=False).iloc[0]
+                    matched_title, matched_imdb_id = best_match['primaryTitle'], best_match['tconst']
                     st.info(f"💡 Şunu mu demek istediniz: **{matched_title}** ({best_match['startYear']})")
 
         if matched_imdb_id:
             st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
             oneriler = get_tmdb_recommendations(matched_imdb_id, TMDB_API_KEY, media_type, limit=15)
-            if oneriler:
-                render_scrollable_strip(f"✨ '{matched_title}' Sevenler İçin Öneriler", oneriler)
+            if oneriler: render_scrollable_strip(f"✨ '{matched_title}' Sevenler İçin Öneriler", oneriler)
 
     else:
         st.markdown("<hr style='border-color: transparent;'>", unsafe_allow_html=True)
@@ -923,10 +714,7 @@ else:
                     render_scrollable_strip("Doğa ve Vahşi Yaşam", doga)
             else:
                 with st.spinner("Kategoriler Yükleniyor..."):
-                    genres = get_tmdb_genres(TMDB_API_KEY, media_type)
-                    genres = [g for g in genres if g['id'] != 99]
+                    genres = [g for g in get_tmdb_genres(TMDB_API_KEY, media_type) if g['id'] != 99]
                     for genre in genres:
-                        genre_id = str(genre['id'])
-                        genre_name = genre['name']
-                        category_items = get_tmdb_discover_by_genre(genre_id, TMDB_API_KEY, media_type, limit=15)
-                        render_scrollable_strip(f"En İyi {genre_name} Yapımları", category_items)
+                        category_items = get_tmdb_discover_by_genre(str(genre['id']), TMDB_API_KEY, media_type, limit=15)
+                        render_scrollable_strip(f"En İyi {genre['name']} Yapımları", category_items)
