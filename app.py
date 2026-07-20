@@ -8,10 +8,13 @@ import random
 import urllib.parse
 import sqlite3
 import hashlib
+import secrets
+import html
+import io
 import base64
 from datetime import datetime
 from contextlib import contextmanager
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 # ==========================================
 # SAYFA AYARLARI
@@ -30,6 +33,8 @@ st.set_page_config(page_title="NextWatch", page_icon=_page_icon, layout="wide")
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "10e5fa6138c11560285b0c8af67e1376")
 DB_PATH = "nextwatch.db"
 MIN_PASSWORD_LEN = 6
+MAX_AVATAR_UPLOAD_MB = 8
+AVATAR_MAX_DIMENSION = 512
 
 # ==========================================
 # VERİTABANI KATMANI (SQLite)
@@ -37,9 +42,14 @@ MIN_PASSWORD_LEN = 6
 @contextmanager
 def get_db():
     """Tüm DB işlemleri için tek noktadan bağlantı yönetimi.
-    Bağlantı otomatik kapanır, hata olursa da sızıntı olmaz."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    Bağlantı otomatik kapanır, hata olursa da sızıntı olmaz.
+    WAL modu + busy_timeout, birden fazla kullanıcının aynı anda yazması
+    durumunda 'database is locked' hatalarını büyük ölçüde engeller."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
     try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA foreign_keys=ON")
         yield conn
         conn.commit()
     finally:
@@ -60,30 +70,83 @@ def init_db():
             except sqlite3.OperationalError:
                 pass  # sütun zaten var
 
+    _migrate_favorites_unique_constraint()
+
+
+def _migrate_favorites_unique_constraint():
+    """Uygulamanın önceki sürümlerinde 'favorites' tablosu (username, tmdb_id) üzerinde
+    UNIQUE kısıtına sahipti. Bu, aynı numaralı ID'ye sahip bir filmin ve bir dizinin
+    aynı kullanıcı için çakışmasına (birinin favoriye eklenememesine) sebep olabiliyordu.
+    Var olan bir veritabanı hâlâ eski şemadaysa, veriyi kaybetmeden yeni
+    (username, tmdb_id, media_type) şemasına taşır."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='favorites'"
+        ).fetchone()
+        if not row or not row[0]:
+            return
+        normalized = row[0].replace(" ", "").replace("\n", "").upper()
+        if "UNIQUE(USERNAME,TMDB_ID,MEDIA_TYPE)" in normalized:
+            return  # zaten güncel şema
+
+        conn.execute("ALTER TABLE favorites RENAME TO favorites_old_migration")
+        conn.execute('''CREATE TABLE favorites
+                     (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
+                      UNIQUE(username, tmdb_id, media_type))''')
+        conn.execute('''INSERT OR IGNORE INTO favorites (username, tmdb_id, title, media_type, poster_path)
+                         SELECT username, tmdb_id, title, media_type, poster_path FROM favorites_old_migration''')
+        conn.execute("DROP TABLE favorites_old_migration")
+
 
 init_db()
 
 
-def make_hashes(password: str) -> str:
-    return hashlib.sha256(str.encode(password)).hexdigest()
+def make_hashes(password: str, salt: str = None) -> str:
+    """Salt'lı PBKDF2-HMAC-SHA256 parola özeti üretir. Format: '<salt_hex>$<hash_hex>'."""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt), 200_000)
+    return f"{salt}${digest.hex()}"
 
 
-def check_hashes(password: str, hashed_text: str) -> bool:
-    return make_hashes(password) == hashed_text
+def check_hashes(password: str, stored: str) -> bool:
+    """Hem yeni (salt'lı) hem de eski (düz sha256) formatlarla geriye dönük uyumlu doğrulama."""
+    if not stored:
+        return False
+    if "$" in stored:
+        salt, _ = stored.split("$", 1)
+        candidate = make_hashes(password, salt)
+        return secrets.compare_digest(candidate, stored)
+    # Eski format (salt'sız sha256) - yeni kullanıcı adı taşınmış eski veritabanları için
+    legacy = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    return secrets.compare_digest(legacy, stored)
 
 
-def make_session_token(username: str) -> str:
-    """Sayfa tam yenilendiğinde (iframe linkleri nedeniyle) session_state sıfırlansa
-    bile kullanıcıyı sessizce geri giriş yapabilmek için kullanılan token."""
-    with get_db() as conn:
-        row = conn.execute('SELECT password FROM users WHERE username=?', (username,)).fetchone()
-    if not row:
-        return ""
-    return hashlib.sha256((username + row[0]).encode()).hexdigest()[:16]
+_NAME_FORBIDDEN_CHARS = set('<>"\'`\\/{}[]|;=~^%$#@&*')
 
 
-def verify_session_token(username: str, token: str) -> bool:
-    return bool(username) and bool(token) and make_session_token(username) == token
+def get_initials(full_name: str) -> str:
+    """Bir kullanıcı adından (Ad Soyad) baş harfleri üretir. Boşsa '?' döner."""
+    parts = [p for p in full_name.split() if p]
+    if not parts:
+        return "?"
+    return "".join(p[0].upper() for p in parts[:2])
+
+
+def is_valid_name_part(value: str) -> bool:
+    """Ad/soyad alanları için basit ama etkili bir doğrulama:
+    - Boş olamaz, 30 karakteri geçemez
+    - Rakam veya HTML/şablon açısından tehlikeli karakter içeremez
+    Bu, XSS'e karşı asıl korumanın (görüntülerken html.escape ile kaçışlama) yanında
+    ek bir savunma katmanıdır."""
+    value = value.strip()
+    if not (1 <= len(value) <= 30):
+        return False
+    if any(ch.isdigit() for ch in value):
+        return False
+    if any(ch in _NAME_FORBIDDEN_CHARS for ch in value):
+        return False
+    return True
 
 
 def add_user(username: str, password: str) -> bool:
@@ -100,7 +163,13 @@ def add_user(username: str, password: str) -> bool:
 def login_user(username: str, password: str) -> bool:
     with get_db() as conn:
         row = conn.execute('SELECT password FROM users WHERE username=?', (username,)).fetchone()
-    return bool(row) and check_hashes(password, row[0])
+    if not row or not check_hashes(password, row[0]):
+        return False
+    if "$" not in row[0]:
+        # Eski (salt'sız) parola özetini artık daha güvenli salt'lı formata sessizce yükselt
+        with get_db() as conn:
+            conn.execute('UPDATE users SET password=? WHERE username=?', (make_hashes(password), username))
+    return True
 
 
 def change_password(username: str, old_password: str, new_password: str) -> tuple[bool, str]:
@@ -125,6 +194,32 @@ def get_user_info(username):
 
 def get_profile_pic(username):
     return get_user_info(username)["profile_pic"]
+
+
+def process_avatar_upload(uploaded_file) -> tuple[bool, str]:
+    """Yüklenen profil fotoğrafını doğrular, makul bir boyuta küçültür ve
+    base64 JPEG olarak döner. Böylece:
+      - Sahte uzantılı / bozuk dosyalar (asıl bir görsel olmayanlar) reddedilir
+      - Çok büyük dosyalar veritabanını şişirmeden önce küçültülür
+    Dönen değer: (başarılı_mı, base64_veri_veya_hata_mesajı)
+    """
+    raw_bytes = uploaded_file.getvalue()
+    if len(raw_bytes) > MAX_AVATAR_UPLOAD_MB * 1024 * 1024:
+        return False, f"Dosya çok büyük. En fazla {MAX_AVATAR_UPLOAD_MB} MB yükleyebilirsiniz."
+
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        img.verify()  # dosyanın bozuk olup olmadığını kontrol et
+        # verify() sonrası akışı yeniden açmak gerekir
+        img = Image.open(io.BytesIO(raw_bytes))
+        img = img.convert("RGB")
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False, "Geçersiz veya bozuk bir görsel dosyası. Lütfen geçerli bir PNG/JPG yükleyin."
+
+    img.thumbnail((AVATAR_MAX_DIMENSION, AVATAR_MAX_DIMENSION))
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=85, optimize=True)
+    return True, base64.b64encode(buffer.getvalue()).decode()
 
 
 def set_profile_pic(username, b64_data):
@@ -176,39 +271,6 @@ def get_favorite_count(username):
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
-
-# --- URL PARAMETRELERİ İLE HTML'DEN TETİKLENEN FAVORİ İŞLEMLERİ ---
-if "action" in st.query_params:
-    action = st.query_params["action"]
-
-    # Iframe içindeki linkler tam sayfa yenilemesine sebep olduğu için
-    # session_state sıfırlanmış olabilir. Token doğruysa oturumu sessizce geri yükle.
-    if not st.session_state.logged_in:
-        qp_user = st.query_params.get("u")
-        qp_tok = st.query_params.get("tok")
-        if verify_session_token(qp_user, qp_tok):
-            st.session_state.logged_in = True
-            st.session_state.username = qp_user
-
-    if st.session_state.logged_in:
-        fav_id = st.query_params.get("id")
-        if action == "add_fav":
-            add_favorite(
-                st.session_state.username,
-                fav_id,
-                st.query_params.get("title"),
-                st.query_params.get("type"),
-                st.query_params.get("poster"),
-            )
-            st.toast("Favorilere eklendi!")
-        elif action == "remove_fav":
-            remove_favorite(st.session_state.username, fav_id, st.query_params.get("type"))
-            st.toast("Favorilerden çıkarıldı!")
-    else:
-        st.warning("Favori işlemi için giriş yapmalısınız!")
-
-    st.query_params.clear()
-    st.rerun()
 
 user_favs_set = set()
 if st.session_state.logged_in:
@@ -407,7 +469,7 @@ def render_profile_corner():
             </style>
             """, unsafe_allow_html=True)
 
-    trigger_label = "👤" if not st.session_state.logged_in else st.session_state.username[0].upper()
+    trigger_label = "?" if not st.session_state.logged_in else get_initials(st.session_state.username)
 
     with st.popover(trigger_label, use_container_width=False):
         if not st.session_state.logged_in:
@@ -421,11 +483,13 @@ def render_profile_corner():
                 with ncol2:
                     soyad_input = st.text_input("Soyad", key="soyad_corner").strip()
                 pass_input = st.text_input("Şifre", type="password", key="pass_corner")
-                full_name = " ".join(part for part in [ad_input, soyad_input] if part)
+                full_name = re.sub(r"\s+", " ", f"{ad_input} {soyad_input}").strip()
 
                 if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
                     if not ad_input or not soyad_input or not pass_input:
                         st.warning("Lütfen ad, soyad ve şifre alanlarını doldurun.")
+                    elif not (is_valid_name_part(ad_input) and is_valid_name_part(soyad_input)):
+                        st.error("Ad/Soyad sadece harflerden oluşmalı ve rakam veya özel karakter (< > \" ' vb.) içermemelidir.")
                     elif len(pass_input) < MIN_PASSWORD_LEN:
                         st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
                     elif add_user(full_name, pass_input):
@@ -451,23 +515,24 @@ def render_profile_corner():
             fav_count = get_favorite_count(username)
             uye_tarihi = info["created_at"] or "Bilinmiyor"
 
-            name_parts = [p for p in username.split() if p]
-            initials = "".join(p[0].upper() for p in name_parts[:2]) if name_parts else "?"
+            initials = get_initials(username)
 
             avatar_style = ""
-            avatar_content = initials
+            avatar_content = html.escape(initials)
             if info["profile_pic"]:
                 avatar_style = f'background-image:url("data:image/png;base64,{info["profile_pic"]}");'
                 avatar_content = ""
 
-            bio_html = f'<p class="profile-bio">{info["bio"]}</p>' if info["bio"] else ""
+            safe_username = html.escape(username)
+            safe_uye_tarihi = html.escape(uye_tarihi)
+            bio_html = f'<p class="profile-bio">{html.escape(info["bio"])}</p>' if info["bio"] else ""
 
             st.markdown(f"""
             <div class="profile-header">
                 <div class="profile-avatar" style="{avatar_style}">{avatar_content}</div>
                 <div>
-                    <p class="profile-name">{username}</p>
-                    <p class="profile-sub">Üyelik tarihi: {uye_tarihi}</p>
+                    <p class="profile-name">{safe_username}</p>
+                    <p class="profile-sub">Üyelik tarihi: {safe_uye_tarihi}</p>
                 </div>
             </div>
             <div class="profile-stats">
@@ -483,11 +548,17 @@ def render_profile_corner():
 
             # --- PROFİL FOTOĞRAFI & BİYOGRAFİ ---
             with tab1:
-                uploaded = st.file_uploader("Profil fotoğrafını güncelle", type=["png", "jpg", "jpeg"], key="pfp_upload")
+                uploaded = st.file_uploader(
+                    "Profil fotoğrafını güncelle", type=["png", "jpg", "jpeg"], key="pfp_upload",
+                    help=f"En fazla {MAX_AVATAR_UPLOAD_MB} MB, PNG veya JPG."
+                )
                 if uploaded:
-                    b64 = base64.b64encode(uploaded.read()).decode()
-                    set_profile_pic(username, b64)
-                    st.rerun()
+                    ok, result = process_avatar_upload(uploaded)
+                    if ok:
+                        set_profile_pic(username, result)
+                        st.rerun()
+                    else:
+                        st.error(result)
 
                 new_bio = st.text_area("Hakkında (bio)", value=info["bio"], max_chars=140,
                                         placeholder="Kendinden kısaca bahset...", key="bio_input")
@@ -781,6 +852,7 @@ def render_scrollable_strip(title: str, items: list):
     if not items:
         return
     container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
+    safe_title = html.escape(title)
 
     html_content = f"""
     <!DOCTYPE html>
@@ -808,7 +880,7 @@ def render_scrollable_strip(title: str, items: list):
     </head>
     <body>
     <div class="header">
-    <h3>{title}</h3>
+    <h3>{safe_title}</h3>
     <div style="display:flex; gap:8px;">
     <button class="nav-btn" onclick="document.getElementById('{container_id}').scrollBy({{left: -300, behavior: 'smooth'}})">❮</button>
     <button class="nav-btn" onclick="document.getElementById('{container_id}').scrollBy({{left: 300, behavior: 'smooth'}})">❯</button>
@@ -862,13 +934,13 @@ def render_scrollable_strip(title: str, items: list):
             valid_items.append((tmdb_id, baslik, m_type_guess, poster_path))
 
         if valid_items:
-            with st.expander(f"❤️ '{title}' listesinden favorilere ekle / çıkar", expanded=False):
+            with st.expander(f"'{safe_title}' listesinden favorilere ekle / çıkar", expanded=False):
                 cols = st.columns(5)
                 for i, (tmdb_id, baslik, m_type_guess, poster_path) in enumerate(valid_items):
                     is_fav_now = (str(tmdb_id), m_type_guess) in user_favs_set
                     with cols[i % 5]:
                         st.caption(baslik[:22] + ("…" if len(baslik) > 22 else ""))
-                        btn_label = "💔 Çıkar" if is_fav_now else "❤️ Ekle"
+                        btn_label = "Çıkar" if is_fav_now else "Ekle"
                         btn_type = "primary" if is_fav_now else "secondary"
                         if st.button(btn_label, key=f"togglefav_{container_id}_{tmdb_id}_{m_type_guess}",
                                      use_container_width=True, type=btn_type):
@@ -932,7 +1004,7 @@ if secim == "Favorilerim":
         st.info("Kendi favori listenizi oluşturmak ve işlem yapmak için sağ üstten giriş yapmalısınız.")
     else:
         st.caption(f"Toplam {get_favorite_count(st.session_state.username)} favori — istediğiniz kadar ekleyebilirsiniz, sınır yoktur.")
-        st.markdown("### 🔍 Hızlı Favori Ekle")
+        st.markdown("### Hızlı Favori Ekle")
         # Favoriler sekmesi içine özel arama çubuğu
         fav_search = st.text_input("Listeye eklemek istediğiniz filmi veya diziyi arayın...", key="fav_search_input").strip()
 
@@ -956,9 +1028,9 @@ if secim == "Favorilerim":
                     with col_btn:
                         is_already_fav = (str(tmdb_id), m_type) in user_favs_set
                         if is_already_fav:
-                            st.button("Eklendi ✔️", disabled=True, key=f"quick_added_{tmdb_id}_{m_type}")
+                            st.button("Eklendi", disabled=True, key=f"quick_added_{tmdb_id}_{m_type}")
                         else:
-                            if st.button("➕ EKLE", key=f"quick_add_{tmdb_id}_{m_type}", type="primary"):
+                            if st.button("EKLE", key=f"quick_add_{tmdb_id}_{m_type}", type="primary"):
                                 add_favorite(st.session_state.username, tmdb_id, baslik, m_type, poster)
                                 st.toast(f"{baslik} başarıyla eklendi!")
                                 st.rerun() # Sayfayı anında yenileyip listeye yansıtır
@@ -966,7 +1038,7 @@ if secim == "Favorilerim":
                 st.warning("Sonuç bulunamadı.")
 
         st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
-        st.markdown("### 🎬 Listeniz")
+        st.markdown("### Listeniz")
 
         # Mevcut favorileri listeleme
         fav_data = get_favorites(st.session_state.username)
@@ -1004,11 +1076,15 @@ elif secim == "Ne İzlesem?":
 
     genres = get_tmdb_genres(TMDB_API_KEY, m_type)
     genre_dict = {g['name']: str(g['id']) for g in genres}
-    selected_genre_name = st.selectbox("Tür Tercihiniz:", list(genre_dict.keys()))
 
-    if st.button("ÖNERİ GETİR", use_container_width=True, type="primary"):
-        with st.spinner("Arşiv taranıyor..."):
-            chosen = get_random_recommendation(genre_dict[selected_genre_name], m_type, TMDB_API_KEY)
+    if not genre_dict:
+        st.warning("Tür listesi şu anda yüklenemedi. Lütfen daha sonra tekrar deneyin.")
+    else:
+        selected_genre_name = st.selectbox("Tür Tercihiniz:", list(genre_dict.keys()))
+
+        if st.button("ÖNERİ GETİR", use_container_width=True, type="primary"):
+            with st.spinner("Arşiv taranıyor..."):
+                chosen = get_random_recommendation(genre_dict[selected_genre_name], m_type, TMDB_API_KEY)
 
         if chosen:
             st.markdown("<hr style='border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
@@ -1042,7 +1118,7 @@ elif secim == "Ne İzlesem?":
 
 # --- FİLM / DİZİ / BELGESEL KEŞİF ve ARAMA ---
 else:
-    search_query = st.text_input("Arama", placeholder="🔍 Ne izlemek istiyorsunuz? (Örn. Matrix)").strip()
+    search_query = st.text_input("Arama", placeholder="Ne izlemek istiyorsunuz? (Örn. Matrix)").strip()
 
     if search_query:
         st.markdown(f"### '{search_query}' İçin Arama Sonuçları")
@@ -1081,13 +1157,13 @@ else:
                     best_match = df[df['primaryTitle'] == chosen_title].sort_values(by='numVotes', ascending=False).iloc[0]
                     matched_title = best_match['primaryTitle']
                     matched_imdb_id = best_match['tconst']
-                    st.info(f"💡 Şunu mu demek istediniz: **{matched_title}** ({best_match['startYear']})")
+                    st.info(f"Şunu mu demek istediniz: **{matched_title}** ({best_match['startYear']})")
 
         if matched_imdb_id:
             st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
             oneriler = get_tmdb_recommendations(matched_imdb_id, TMDB_API_KEY, media_type, limit=15)
             if oneriler:
-                render_scrollable_strip(f"✨ '{matched_title}' Sevenler İçin Öneriler", oneriler)
+                render_scrollable_strip(f"'{matched_title}' Sevenler İçin Öneriler", oneriler)
 
     else:
         st.markdown("<hr style='border-color: transparent;'>", unsafe_allow_html=True)
