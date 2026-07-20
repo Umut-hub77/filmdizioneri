@@ -713,16 +713,6 @@ def render_scrollable_strip(title: str, items: list):
                 kwargs={"w_key": widget_key, "current_map": item_map, "old_favs": user_favs_set}
             )
 
-            if set(selected) != set(default_selected):
-                for label, (tid, baslik, mtype, poster) in item_map.items():
-                    is_selected_now = label in selected
-                    was_fav_before = tid in user_favs_set
-                    if is_selected_now and not was_fav_before:
-                        add_favorite(st.session_state.username, tid, baslik, mtype, poster)
-                    elif not is_selected_now and was_fav_before:
-                        remove_favorite(st.session_state.username, tid)
-                st.rerun()
-
 
 # ==========================================
 # ANA ARAYÜZ
