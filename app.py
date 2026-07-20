@@ -602,6 +602,9 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
 # ==========================================
 # KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
 # ==========================================
+# ==========================================
+# KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
+# ==========================================
 def render_scrollable_strip(title: str, items: list):
     if not items:
         return
@@ -614,33 +617,21 @@ def render_scrollable_strip(title: str, items: list):
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap');
     body {{ margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; background: transparent; overflow: hidden; }}
-    .header {{
-        display: flex; justify-content: space-between; align-items: center; gap: 10px;
-        margin-bottom: 15px; padding: 10px 15px; background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }}
+    .header {{ display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 15px; padding: 10px 15px; background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
     .header h3 {{ margin: 0; font-size: 1.2rem; font-weight: 700; color: #141414; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     .nav-buttons {{ display: flex; gap: 6px; }}
-    .nav-btn {{
-        background: rgba(255,255,255,0.06); border: 1px solid rgba(0,0,0,0.08); color: #141414; width: 32px; height: 26px;
-        border-radius: 6px; cursor: pointer; transition: 0.25s; font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
-    }}
+    .nav-btn {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(0,0,0,0.08); color: #141414; width: 32px; height: 26px; border-radius: 6px; cursor: pointer; transition: 0.25s; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }}
     .nav-btn:hover {{ background: #E50914; color: #ffffff; border-color: #E50914; }}
     .scroll-container {{ display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; scrollbar-width: none; }}
     .scroll-container::-webkit-scrollbar {{ display: none; }}
     .movie-card {{ flex: 0 0 140px; width: 140px; display: flex; flex-direction: column; }}
     .poster-box {{ position: relative; width: 100%; height: 210px; border-radius: 6px; overflow: hidden; cursor: pointer; }}
     .poster-img {{ width: 100%; height: 100%; object-fit: cover; transition: 0.3s; }}
-    .hover-overlay {{
-        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
-        justify-content: center; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: 0.3s;
-    }}
+    .hover-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: 0.3s; }}
     .show-overlay {{ opacity: 1 !important; pointer-events: auto !important; }}
     .action-btn {{ padding: 6px 10px; border-radius: 4px; text-decoration: none !important; font-size: 0.7rem; font-weight: bold; width: 85%; text-align: center; box-sizing: border-box; cursor: pointer; }}
     .btn-red {{ background: #E50914; color: white !important; }}
     .btn-dark {{ background: transparent; border: 1px solid white; color: white !important; }}
-    .btn-fav-add {{ background: transparent; border: 1px solid #ff3366; color: #ff3366 !important; }}
-    .btn-fav-remove {{ background: #ff3366; color: white !important; border: none; }}
     </style>
     </head>
     <body>
@@ -664,27 +655,17 @@ def render_scrollable_strip(title: str, items: list):
         safe_baslik = urllib.parse.quote(baslik)
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         m_type_guess = 'movie' if 'title' in row else 'tv'
-
         imdb_id = get_imdb_id(tmdb_id, m_type_guess)
         imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
 
-        # NOT: Favori ekleme/çıkarma artık bu iframe içinde YOK. Streamlit Cloud'da
-        # components.html() iframe'inin sandbox/origin davranışı deploy'a göre
-        # değişebiliyor; window.top.location üzerinden zorla yönlendirme bazı
-        # ortamlarda güvenlik kısıtlamalarına takılıp uygulamayı kendi içine
-        # yanlışlıkla yeniden yüklüyordu (çift/iç içe render sorunu). Bu yüzden
-        # favori kontrolü, şeridin ALTINDA gerçek bir Streamlit widget'ı olarak
-        # (bkz. fonksiyonun sonundaki multiselect) veriliyor — iframe sınırını
-        # hiç aşmaya gerek kalmıyor.
         html_content += f"""
         <div class="movie-card">
         <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
         <img src="{image_url}" class="poster-img">
         <div class="hover-overlay">
-          <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
-          <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
-          <!-- Favori butonu burada yok! -->
+        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
+        <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
         </div>
         </div>
         </div>
