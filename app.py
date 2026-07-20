@@ -326,26 +326,48 @@ div[data-testid="stPopover"] > div > button:hover {
 /* --- Profil paneli --- */
 .profile-header {
     display: flex; align-items: center; gap: 16px;
-    padding: 6px 2px 18px 2px;
+    padding: 4px 2px 20px 2px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
-    margin-bottom: 14px;
+    margin-bottom: 16px;
 }
 .profile-avatar {
-    width: 64px; height: 64px; border-radius: 50%;
-    background: linear-gradient(135deg, #E50914, #a8050d);
+    width: 60px; height: 60px; border-radius: 50%;
+    background: linear-gradient(135deg, #3a3a3a, #1a1a1a);
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.6rem; font-weight: 800; color: #fff;
+    font-size: 1.4rem; font-weight: 700; color: #fff;
     background-size: cover; background-position: center;
-    border: 2px solid rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.14);
     flex-shrink: 0;
+    letter-spacing: 0.5px;
 }
-.profile-name { font-size: 1.25rem; font-weight: 800; margin: 0; }
-.profile-sub { color: #a0aec0; font-size: 0.82rem; margin: 2px 0 0 0; }
+.profile-name { font-size: 1.05rem; font-weight: 700; margin: 0; color: #f2f2f2; }
+.profile-sub { color: #7d8590; font-size: 0.78rem; margin: 3px 0 0 0; font-weight: 500; }
 .profile-stats {
-    display: flex; gap: 22px; margin: 4px 0 16px 0;
+    display: flex; gap: 28px; margin: 2px 0 18px 0;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
-.profile-stat-num { font-size: 1.15rem; font-weight: 800; color: #ffffff; margin: 0; }
-.profile-stat-label { font-size: 0.72rem; color: #8c8c8c; text-transform: uppercase; letter-spacing: 0.4px; margin: 0; }
+.profile-stat-block { display: flex; flex-direction: column; }
+.profile-stat-num { font-size: 1.3rem; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.1; }
+.profile-stat-label { font-size: 0.68rem; color: #7d8590; text-transform: uppercase; letter-spacing: 0.6px; margin: 3px 0 0 0; font-weight: 600; }
+.profile-bio { color: #a0aec0; font-size: 0.85rem; margin: -8px 0 16px 0; line-height: 1.5; }
+
+/* Sekme çubuğunu sadeleştir */
+div[data-testid="stTabs"] button[data-baseweb="tab"] {
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    color: #8c8c8c !important;
+    letter-spacing: 0.2px !important;
+}
+div[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #ffffff !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    background-color: #E50914 !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-border"] {
+    background-color: rgba(255,255,255,0.08) !important;
+}
 
 /* --- Detay sayfası (Ne İzlesem?) aksiyon butonları --- */
 .hero-actions { display:flex; gap:14px; margin: 18px 0 6px 0; flex-wrap: wrap; }
@@ -429,32 +451,35 @@ def render_profile_corner():
             fav_count = get_favorite_count(username)
             uye_tarihi = info["created_at"] or "Bilinmiyor"
 
+            name_parts = [p for p in username.split() if p]
+            initials = "".join(p[0].upper() for p in name_parts[:2]) if name_parts else "?"
+
             avatar_style = ""
-            avatar_content = username[0].upper()
+            avatar_content = initials
             if info["profile_pic"]:
                 avatar_style = f'background-image:url("data:image/png;base64,{info["profile_pic"]}");'
                 avatar_content = ""
+
+            bio_html = f'<p class="profile-bio">{info["bio"]}</p>' if info["bio"] else ""
 
             st.markdown(f"""
             <div class="profile-header">
                 <div class="profile-avatar" style="{avatar_style}">{avatar_content}</div>
                 <div>
                     <p class="profile-name">{username}</p>
-                    <p class="profile-sub">Üyelik: {uye_tarihi}</p>
+                    <p class="profile-sub">Üyelik tarihi: {uye_tarihi}</p>
                 </div>
             </div>
             <div class="profile-stats">
-                <div>
+                <div class="profile-stat-block">
                     <p class="profile-stat-num">{fav_count}</p>
                     <p class="profile-stat-label">Favori</p>
                 </div>
             </div>
+            {bio_html}
             """, unsafe_allow_html=True)
 
-            if info["bio"]:
-                st.caption(info["bio"])
-
-            tab1, tab2, tab3, tab4 = st.tabs(["🖼️ Profil", "❤️ Favoriler", "🔒 Ayarlar", "🚪 Çıkış"])
+            tab1, tab2, tab3, tab4 = st.tabs(["Profil", "Favoriler", "Ayarlar", "Çıkış"])
 
             # --- PROFİL FOTOĞRAFI & BİYOGRAFİ ---
             with tab1:
