@@ -603,6 +603,8 @@ def render_scrollable_strip(title: str, items: list):
     if not items:
         return
     container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
+    current_user = st.session_state.username if st.session_state.logged_in else ""
+    current_token = make_session_token(current_user) if current_user else ""
 
     html_content = f"""
     <!DOCTYPE html>
@@ -669,16 +671,17 @@ def render_scrollable_strip(title: str, items: list):
         # NOT: target="_top" -> iframe içindeki link, Streamlit sayfasının tamamını
         # (üst pencereyi) yönlendirir. JS ile window.top.location değiştirmek yerine
         # native <a> linki kullanmak, tarayıcının sandbox/iframe kısıtlamalarına takılmaz.
-        if str(tmdb_id) in user_favs_set:
+            if str(tmdb_id) in user_favs_set:
             fav_btn = (
-                f'<a href="?action=remove_fav&id={tmdb_id}" target="_top" '
-                f'class="action-btn btn-fav-remove">❌ Favoriden Çıkar</a>'
+                f'<a href="?action=remove_fav&id={tmdb_id}&u={urllib.parse.quote(current_user)}&tok={current_token}" '
+                f'target="_top" class="action-btn btn-fav-remove">❌ Favoriden Çıkar</a>'
             )
         else:
             fav_btn = (
                 f'<a href="?action=add_fav&id={tmdb_id}&title={safe_baslik}'
-                f'&type={m_type_guess}&poster={poster_path}" target="_top" '
-                f'class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
+                f'&type={m_type_guess}&poster={poster_path}'
+                f'&u={urllib.parse.quote(current_user)}&tok={current_token}" '
+                f'target="_top" class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
             )
 
         html_content += f"""
