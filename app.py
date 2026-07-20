@@ -9,6 +9,7 @@ import urllib.parse
 import sqlite3
 import hashlib
 import base64
+from datetime import datetime
 from contextlib import contextmanager
 from PIL import Image
 
@@ -51,12 +52,13 @@ def init_db():
         c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
         c.execute('''CREATE TABLE IF NOT EXISTS favorites
                      (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
-                      UNIQUE(username, tmdb_id))''')
-        # Eski veritabanlarında profile_pic sütunu yoksa ekle (migration)
-        try:
-            c.execute('ALTER TABLE users ADD COLUMN profile_pic TEXT')
-        except sqlite3.OperationalError:
-            pass  # sütun zaten var
+                      UNIQUE(username, tmdb_id, media_type))''')
+        # Eski veritabanlarında olmayan sütunları ekle (migration)
+        for col_def in ["profile_pic TEXT", "created_at TEXT", "bio TEXT"]:
+            try:
+                c.execute(f'ALTER TABLE users ADD COLUMN {col_def}')
+            except sqlite3.OperationalError:
+                pass  # sütun zaten var
 
 
 init_db()
@@ -88,8 +90,8 @@ def add_user(username: str, password: str) -> bool:
     """Yeni kullanıcı ekler. Kullanıcı adı zaten varsa False döner."""
     try:
         with get_db() as conn:
-            conn.execute('INSERT INTO users (username, password) VALUES (?, ?)',
-                         (username, make_hashes(password)))
+            conn.execute('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)',
+                         (username, make_hashes(password), datetime.now().strftime("%Y-%m-%d")))
         return True
     except sqlite3.IntegrityError:
         return False
@@ -101,10 +103,28 @@ def login_user(username: str, password: str) -> bool:
     return bool(row) and check_hashes(password, row[0])
 
 
-def get_profile_pic(username):
+def change_password(username: str, old_password: str, new_password: str) -> tuple[bool, str]:
+    if not login_user(username, old_password):
+        return False, "Mevcut şifreniz hatalı."
+    if len(new_password) < MIN_PASSWORD_LEN:
+        return False, f"Yeni şifre en az {MIN_PASSWORD_LEN} karakter olmalı."
     with get_db() as conn:
-        row = conn.execute('SELECT profile_pic FROM users WHERE username=?', (username,)).fetchone()
-    return row[0] if row and row[0] else None
+        conn.execute('UPDATE users SET password=? WHERE username=?', (make_hashes(new_password), username))
+    return True, "Şifreniz başarıyla güncellendi."
+
+
+def get_user_info(username):
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT profile_pic, created_at, bio FROM users WHERE username=?', (username,)
+        ).fetchone()
+    if not row:
+        return {"profile_pic": None, "created_at": None, "bio": ""}
+    return {"profile_pic": row[0], "created_at": row[1], "bio": row[2] or ""}
+
+
+def get_profile_pic(username):
+    return get_user_info(username)["profile_pic"]
 
 
 def set_profile_pic(username, b64_data):
@@ -112,7 +132,13 @@ def set_profile_pic(username, b64_data):
         conn.execute('UPDATE users SET profile_pic=? WHERE username=?', (b64_data, username))
 
 
+def set_bio(username, bio_text):
+    with get_db() as conn:
+        conn.execute('UPDATE users SET bio=? WHERE username=?', (bio_text, username))
+
+
 def add_favorite(username, tmdb_id, title, media_type, poster_path):
+    """Favorilere ekler. Sınır yoktur; aynı (kullanıcı, id, tür) zaten favoriyse sessizce yok sayılır."""
     try:
         with get_db() as conn:
             conn.execute('INSERT INTO favorites VALUES (?, ?, ?, ?, ?)',
@@ -121,17 +147,27 @@ def add_favorite(username, tmdb_id, title, media_type, poster_path):
         pass  # Zaten favorilerde
 
 
-def remove_favorite(username, tmdb_id):
+def remove_favorite(username, tmdb_id, media_type=None):
     with get_db() as conn:
-        conn.execute('DELETE FROM favorites WHERE username=? AND tmdb_id=?', (username, str(tmdb_id)))
+        if media_type:
+            conn.execute('DELETE FROM favorites WHERE username=? AND tmdb_id=? AND media_type=?',
+                         (username, str(tmdb_id), media_type))
+        else:
+            conn.execute('DELETE FROM favorites WHERE username=? AND tmdb_id=?', (username, str(tmdb_id)))
 
 
 def get_favorites(username):
     with get_db() as conn:
         return conn.execute(
-            'SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=?',
+            'SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=? ORDER BY rowid DESC',
             (username,)
         ).fetchall()
+
+
+def get_favorite_count(username):
+    with get_db() as conn:
+        row = conn.execute('SELECT COUNT(*) FROM favorites WHERE username=?', (username,)).fetchone()
+    return row[0] if row else 0
 
 
 # ==========================================
@@ -166,7 +202,7 @@ if "action" in st.query_params:
             )
             st.toast("Favorilere eklendi!")
         elif action == "remove_fav":
-            remove_favorite(st.session_state.username, fav_id)
+            remove_favorite(st.session_state.username, fav_id, st.query_params.get("type"))
             st.toast("Favorilerden çıkarıldı!")
     else:
         st.warning("Favori işlemi için giriş yapmalısınız!")
@@ -176,7 +212,9 @@ if "action" in st.query_params:
 
 user_favs_set = set()
 if st.session_state.logged_in:
-    user_favs_set = {row[0] for row in get_favorites(st.session_state.username)}
+    # (tmdb_id, media_type) çiftlerinden oluşan set — aynı ID'nin farklı türde
+    # (film/dizi) ayrı ayrı favorilenebilmesi için media_type'ı da dahil ediyoruz.
+    user_favs_set = {(row[0], row[2]) for row in get_favorites(st.session_state.username)}
 
 
 # ==========================================
@@ -285,6 +323,30 @@ div[data-testid="stPopover"] > div > button:hover {
     transform: translateY(-1px);
 }
 
+/* --- Profil paneli --- */
+.profile-header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 6px 2px 18px 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 14px;
+}
+.profile-avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(135deg, #E50914, #a8050d);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; font-weight: 800; color: #fff;
+    background-size: cover; background-position: center;
+    border: 2px solid rgba(255,255,255,0.18);
+    flex-shrink: 0;
+}
+.profile-name { font-size: 1.25rem; font-weight: 800; margin: 0; }
+.profile-sub { color: #a0aec0; font-size: 0.82rem; margin: 2px 0 0 0; }
+.profile-stats {
+    display: flex; gap: 22px; margin: 4px 0 16px 0;
+}
+.profile-stat-num { font-size: 1.15rem; font-weight: 800; color: #ffffff; margin: 0; }
+.profile-stat-label { font-size: 0.72rem; color: #8c8c8c; text-transform: uppercase; letter-spacing: 0.4px; margin: 0; }
+
 /* --- Detay sayfası (Ne İzlesem?) aksiyon butonları --- */
 .hero-actions { display:flex; gap:14px; margin: 18px 0 6px 0; flex-wrap: wrap; }
 .hero-btn {
@@ -350,21 +412,97 @@ def render_profile_corner():
                     else:
                         st.error("Kullanıcı adı veya şifre hatalı!")
         else:
-            st.markdown(f"### Merhaba, **{st.session_state.username}**")
+            username = st.session_state.username
+            info = get_user_info(username)
+            fav_count = get_favorite_count(username)
+            uye_tarihi = info["created_at"] or "Bilinmiyor"
 
-            # Sekmeler ile menü düzeni
-            tab1, tab2 = st.tabs(["👤 Profil & Ayarlar", "⚙️ Hesap"])
+            avatar_style = ""
+            avatar_content = username[0].upper()
+            if info["profile_pic"]:
+                avatar_style = f'background-image:url("data:image/png;base64,{info["profile_pic"]}");'
+                avatar_content = ""
 
+            st.markdown(f"""
+            <div class="profile-header">
+                <div class="profile-avatar" style="{avatar_style}">{avatar_content}</div>
+                <div>
+                    <p class="profile-name">{username}</p>
+                    <p class="profile-sub">Üyelik: {uye_tarihi}</p>
+                </div>
+            </div>
+            <div class="profile-stats">
+                <div>
+                    <p class="profile-stat-num">{fav_count}</p>
+                    <p class="profile-stat-label">Favori</p>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if info["bio"]:
+                st.caption(info["bio"])
+
+            tab1, tab2, tab3, tab4 = st.tabs(["🖼️ Profil", "❤️ Favoriler", "🔒 Ayarlar", "🚪 Çıkış"])
+
+            # --- PROFİL FOTOĞRAFI & BİYOGRAFİ ---
             with tab1:
                 uploaded = st.file_uploader("Profil fotoğrafını güncelle", type=["png", "jpg", "jpeg"], key="pfp_upload")
                 if uploaded:
                     b64 = base64.b64encode(uploaded.read()).decode()
-                    set_profile_pic(st.session_state.username, b64)
+                    set_profile_pic(username, b64)
                     st.rerun()
-                st.caption("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
 
+                new_bio = st.text_area("Hakkında (bio)", value=info["bio"], max_chars=140,
+                                        placeholder="Kendinden kısaca bahset...", key="bio_input")
+                if st.button("Bio'yu Kaydet", key="save_bio", use_container_width=True):
+                    set_bio(username, new_bio.strip())
+                    st.toast("Bio güncellendi!")
+                    st.rerun()
+
+            # --- FAVORİLER ÖNİZLEME ---
             with tab2:
-                if st.button("Çıkış Yap", key="logout_corner", use_container_width=True):
+                fav_rows = get_favorites(username)
+                if not fav_rows:
+                    st.info("Henüz favori eklemediniz.")
+                else:
+                    st.caption(f"Toplam {len(fav_rows)} favori (sınır yok)")
+                    for tmdb_id, title, mtype, poster in fav_rows[:8]:
+                        c1, c2, c3 = st.columns([1, 4, 2])
+                        with c1:
+                            if poster:
+                                st.image(f"https://image.tmdb.org/t/p/w92{poster}", width=40)
+                        with c2:
+                            st.write(f"**{title}**")
+                            st.caption("Film" if mtype == "movie" else "Dizi")
+                        with c3:
+                            if st.button("Çıkar", key=f"pop_remove_{tmdb_id}_{mtype}", use_container_width=True):
+                                remove_favorite(username, tmdb_id, mtype)
+                                st.rerun()
+                    if len(fav_rows) > 8:
+                        st.caption(f"+{len(fav_rows) - 8} favori daha var. Tümü için **Favorilerim** sekmesine gidin.")
+
+            # --- ŞİFRE DEĞİŞTİRME ---
+            with tab3:
+                st.markdown("##### Şifre Değiştir")
+                old_pw = st.text_input("Mevcut Şifre", type="password", key="old_pw_corner")
+                new_pw = st.text_input("Yeni Şifre", type="password", key="new_pw_corner")
+                new_pw2 = st.text_input("Yeni Şifre (Tekrar)", type="password", key="new_pw2_corner")
+                if st.button("Şifreyi Güncelle", key="update_pw_corner", use_container_width=True):
+                    if not old_pw or not new_pw or not new_pw2:
+                        st.warning("Lütfen tüm alanları doldurun.")
+                    elif new_pw != new_pw2:
+                        st.error("Yeni şifreler eşleşmiyor.")
+                    else:
+                        ok, msg = change_password(username, old_pw, new_pw)
+                        if ok:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+
+            # --- ÇIKIŞ ---
+            with tab4:
+                st.caption("Hesabınızdan çıkış yapmak üzeresiniz.")
+                if st.button("Çıkış Yap", key="logout_corner", type="primary", use_container_width=True):
                     st.session_state.logged_in = False
                     st.session_state.username = ""
                     st.rerun()
@@ -586,12 +724,12 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
         fcol, _ = st.columns([1, 3])
         with fcol:
             if is_fav:
-                if st.button("Favoriden Çıkar", key=f"fav_remove_{tmdb_id}", type="primary", use_container_width=True):
-                    remove_favorite(st.session_state.username, tmdb_id)
+                if st.button("Favoriden Çıkar", key=f"fav_remove_{tmdb_id}_{m_type}", type="primary", use_container_width=True):
+                    remove_favorite(st.session_state.username, tmdb_id, m_type)
                     st.toast("Favorilerden çıkarıldı!")
                     st.rerun()
             else:
-                if st.button("Favoriye Ekle", key=f"fav_add_{tmdb_id}", type="primary", use_container_width=True):
+                if st.button("Favoriye Ekle", key=f"fav_add_{tmdb_id}_{m_type}", type="primary", use_container_width=True):
                     add_favorite(st.session_state.username, tmdb_id, real_title, m_type, poster_path)
                     st.toast("Favorilere eklendi!")
                     st.rerun()
@@ -670,10 +808,13 @@ def render_scrollable_strip(title: str, items: list):
 
     html_content += "</div></body></html>"
     components.html(html_content, height=330, scrolling=False)
-    
-# --- Favori yönetimi: gerçek Streamlit widget'ı, iframe DIŞINDA ---
+
+    # --- Favori yönetimi: gerçek Streamlit butonları, iframe DIŞINDA ---
+    # Sınırsız favori: her öğe kendi bağımsız butonuna sahip, hiçbir toplu
+    # senkronizasyon / multiselect state'i kullanılmıyor. Bu yüzden istediğiniz
+    # kadar filmi/diziyi favoriye ekleyip çıkarabilirsiniz.
     if st.session_state.logged_in:
-        item_map = {}
+        valid_items = []
         for row in items:
             baslik = row.get('title') or row.get('name')
             poster_path = row.get('poster_path')
@@ -681,37 +822,26 @@ def render_scrollable_strip(title: str, items: list):
             if not poster_path or not tmdb_id:
                 continue
             m_type_guess = 'movie' if 'title' in row else 'tv'
-            
-            # Aynı isimli filmlerin birbirini ezmesini engellemek için ID'yi de ekliyoruz
-            label = f"{baslik} ({tmdb_id})"
-            item_map[label] = (str(tmdb_id), baslik, m_type_guess, poster_path)
+            valid_items.append((tmdb_id, baslik, m_type_guess, poster_path))
 
-        if item_map:
-            default_selected = [label for label, (tid, *_r) in item_map.items() if tid in user_favs_set]
-            widget_key = f"favsel_{container_id}"
-
-            # Seçim değiştiğinde tetiklenecek güvenli fonksiyon
-            def fav_selection_changed(w_key, current_map, old_favs):
-                new_selection = st.session_state[w_key]
-                
-                for lbl, (tid, baslik, mtype, poster) in current_map.items():
-                    is_selected_now = lbl in new_selection
-                    was_fav_before = tid in old_favs
-                    
-                    if is_selected_now and not was_fav_before:
-                        add_favorite(st.session_state.username, tid, baslik, mtype, poster)
-                    elif not is_selected_now and was_fav_before:
-                        remove_favorite(st.session_state.username, tid)
-
-            # Arayüz aracı (Widget)
-            st.multiselect(
-                "❤️ Bu listeden favorilere eklemek/çıkarmak istediklerinizi seçin:",
-                options=list(item_map.keys()),
-                default=default_selected,
-                key=widget_key,
-                on_change=fav_selection_changed,
-                kwargs={"w_key": widget_key, "current_map": item_map, "old_favs": user_favs_set}
-            )
+        if valid_items:
+            with st.expander(f"❤️ '{title}' listesinden favorilere ekle / çıkar", expanded=False):
+                cols = st.columns(5)
+                for i, (tmdb_id, baslik, m_type_guess, poster_path) in enumerate(valid_items):
+                    is_fav_now = (str(tmdb_id), m_type_guess) in user_favs_set
+                    with cols[i % 5]:
+                        st.caption(baslik[:22] + ("…" if len(baslik) > 22 else ""))
+                        btn_label = "💔 Çıkar" if is_fav_now else "❤️ Ekle"
+                        btn_type = "primary" if is_fav_now else "secondary"
+                        if st.button(btn_label, key=f"togglefav_{container_id}_{tmdb_id}_{m_type_guess}",
+                                     use_container_width=True, type=btn_type):
+                            if is_fav_now:
+                                remove_favorite(st.session_state.username, tmdb_id, m_type_guess)
+                                st.toast("Favorilerden çıkarıldı!")
+                            else:
+                                add_favorite(st.session_state.username, tmdb_id, baslik, m_type_guess, poster_path)
+                                st.toast("Favorilere eklendi!")
+                            st.rerun()
 
 
 # ==========================================
@@ -764,15 +894,16 @@ if secim == "Favorilerim":
     if not st.session_state.logged_in:
         st.info("Kendi favori listenizi oluşturmak ve işlem yapmak için sağ üstten giriş yapmalısınız.")
     else:
+        st.caption(f"Toplam {get_favorite_count(st.session_state.username)} favori — istediğiniz kadar ekleyebilirsiniz, sınır yoktur.")
         st.markdown("### 🔍 Hızlı Favori Ekle")
         # Favoriler sekmesi içine özel arama çubuğu
         fav_search = st.text_input("Listeye eklemek istediğiniz filmi veya diziyi arayın...", key="fav_search_input").strip()
-        
+
         if fav_search:
             # Sadece favoriler sayfasında arama yapar
             search_results = get_tmdb_search(fav_search, TMDB_API_KEY, "multi")
             filtered_results = [i for i in search_results if i.get('poster_path')][:5] # En iyi 5 sonucu gösterir
-            
+
             if filtered_results:
                 for item in filtered_results:
                     baslik = item.get('title') or item.get('name')
@@ -780,32 +911,34 @@ if secim == "Favorilerim":
                     m_type = 'movie' if 'title' in item else 'tv'
                     poster = item.get('poster_path')
                     yil = (item.get('release_date') or item.get('first_air_date') or 'Bilinmiyor')[:4]
-                    
+
                     # Her sonuç için yan yana isim ve buton gösterimi
                     col_info, col_btn = st.columns([4, 1])
                     with col_info:
                         st.write(f"**{baslik}** ({yil})")
                     with col_btn:
-                        is_already_fav = str(tmdb_id) in user_favs_set
+                        is_already_fav = (str(tmdb_id), m_type) in user_favs_set
                         if is_already_fav:
-                            st.button("Eklendi ✔️", disabled=True, key=f"quick_added_{tmdb_id}")
+                            st.button("Eklendi ✔️", disabled=True, key=f"quick_added_{tmdb_id}_{m_type}")
                         else:
-                            if st.button("➕ EKLE", key=f"quick_add_{tmdb_id}", type="primary"):
+                            if st.button("➕ EKLE", key=f"quick_add_{tmdb_id}_{m_type}", type="primary"):
                                 add_favorite(st.session_state.username, tmdb_id, baslik, m_type, poster)
                                 st.toast(f"{baslik} başarıyla eklendi!")
                                 st.rerun() # Sayfayı anında yenileyip listeye yansıtır
             else:
                 st.warning("Sonuç bulunamadı.")
-                
+
         st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
         st.markdown("### 🎬 Listeniz")
-        
+
         # Mevcut favorileri listeleme
         fav_data = get_favorites(st.session_state.username)
         if not fav_data:
             st.info("Listeniz şu an boş. Yukarıdan arama yaparak eklemeye başlayabilirsiniz!")
         else:
-            fav_items = [{"id": row[0], "title": row[1], "poster_path": row[3]} for row in fav_data]
+            fav_items = [{"id": row[0], "title": row[1], "poster_path": row[3],
+                          **({"title": row[1]} if row[2] == 'movie' else {"name": row[1]})}
+                         for row in fav_data]
             render_scrollable_strip(f"{st.session_state.username} adlı kullanıcının Favorileri", fav_items)
 
 # --- NE İZLESEM SEKMESİ ---
@@ -865,7 +998,7 @@ elif secim == "Ne İzlesem?":
 
                 render_hero_actions(
                     watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'),
-                    st.session_state.logged_in, str(tmdb_id) in user_favs_set
+                    st.session_state.logged_in, (str(tmdb_id), m_type) in user_favs_set
                 )
         else:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
