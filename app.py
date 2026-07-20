@@ -607,11 +607,6 @@ def render_scrollable_strip(title: str, items: list):
         return
     container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
 
-    # Sayfa tam yenilense bile oturumu geri yükleyebilmek için token.
-    current_user = st.session_state.username if st.session_state.logged_in else ""
-    current_token = make_session_token(current_user) if current_user else ""
-    enc_user = urllib.parse.quote(current_user)
-
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -667,7 +662,6 @@ def render_scrollable_strip(title: str, items: list):
             continue
 
         safe_baslik = urllib.parse.quote(baslik)
-        safe_poster = urllib.parse.quote(poster_path)
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         m_type_guess = 'movie' if 'title' in row else 'tv'
 
@@ -675,25 +669,14 @@ def render_scrollable_strip(title: str, items: list):
         imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
 
-        # NOT: Streamlit'in components.html() ile oluşturduğu iframe, kendi ayrı
-        # kaynağından (srcdoc) yüklenir. Bu yüzden "?action=..." gibi GÖRELİ bir
-        # href, üst sayfaya değil, iframe'in kendi (boş) kaynağına göre çözümlenir
-        # ve link ya hiç çalışmaz ya da yanlış adrese gider — favoriler bu yüzden
-        # kaydedilmiyordu. Çözüm: JS ile window.top.location'dan MUTLAK URL inşa
-        # edip öyle yönlendirmek.
-        if str(tmdb_id) in user_favs_set:
-            fav_btn = (
-                f'<a href="#" class="action-btn btn-fav-remove" '
-                f"onclick=\"favAction('remove_fav','{tmdb_id}','','','');return false;\">"
-                f'❌ Favoriden Çıkar</a>'
-            )
-        else:
-            fav_btn = (
-                f'<a href="#" class="action-btn btn-fav-add" '
-                f"onclick=\"favAction('add_fav','{tmdb_id}','{safe_baslik}','{m_type_guess}','{safe_poster}');return false;\">"
-                f'❤️ Favoriye Ekle</a>'
-            )
-
+        # NOT: Favori ekleme/çıkarma artık bu iframe içinde YOK. Streamlit Cloud'da
+        # components.html() iframe'inin sandbox/origin davranışı deploy'a göre
+        # değişebiliyor; window.top.location üzerinden zorla yönlendirme bazı
+        # ortamlarda güvenlik kısıtlamalarına takılıp uygulamayı kendi içine
+        # yanlışlıkla yeniden yüklüyordu (çift/iç içe render sorunu). Bu yüzden
+        # favori kontrolü, şeridin ALTINDA gerçek bir Streamlit widget'ı olarak
+        # (bkz. fonksiyonun sonundaki multiselect) veriliyor — iframe sınırını
+        # hiç aşmaya gerek kalmıyor.
         html_content += f"""
         <div class="movie-card">
         <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
@@ -701,28 +684,48 @@ def render_scrollable_strip(title: str, items: list):
         <div class="hover-overlay">
         <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
         <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
-        {fav_btn}
         </div>
         </div>
         </div>
         """
 
-    html_content += f"""
-    </div>
-    <script>
-    function favAction(action, id, title, type, poster) {{
-        var base = window.top.location.origin + window.top.location.pathname;
-        var url = base + "?action=" + action + "&id=" + encodeURIComponent(id);
-        if (title)  url += "&title=" + title;    // zaten yüzde-kodlanmış (Python tarafında)
-        if (type)   url += "&type=" + type;
-        if (poster) url += "&poster=" + poster;  // zaten yüzde-kodlanmış
-        url += "&u={enc_user}&tok={current_token}";
-        window.top.location.href = url;
-    }}
-    </script>
-    </body></html>
-    """
+    html_content += "</div></body></html>"
     components.html(html_content, height=330, scrolling=False)
+
+    # --- Favori yönetimi: gerçek Streamlit widget'ı, iframe DIŞINDA ---
+    # Bu, session_state'i asla bozmaz çünkü normal bir Streamlit widget
+    # etkileşimidir (websocket üzerinden rerun), sayfa hiç yenilenmez.
+    if st.session_state.logged_in:
+        item_map = {}
+        for row in items:
+            baslik = row.get('title') or row.get('name')
+            poster_path = row.get('poster_path')
+            tmdb_id = row.get('id')
+            if not poster_path or not tmdb_id:
+                continue
+            m_type_guess = 'movie' if 'title' in row else 'tv'
+            label = f"{baslik}"
+            item_map[label] = (str(tmdb_id), baslik, m_type_guess, poster_path)
+
+        if item_map:
+            default_selected = [label for label, (tid, *_r) in item_map.items() if tid in user_favs_set]
+            widget_key = f"favsel_{container_id}"
+            selected = st.multiselect(
+                "❤️ Bu listeden favorilere eklemek/çıkarmak istediklerinizi seçin:",
+                options=list(item_map.keys()),
+                default=default_selected,
+                key=widget_key,
+            )
+
+            if set(selected) != set(default_selected):
+                for label, (tid, baslik, mtype, poster) in item_map.items():
+                    is_selected_now = label in selected
+                    was_fav_before = tid in user_favs_set
+                    if is_selected_now and not was_fav_before:
+                        add_favorite(st.session_state.username, tid, baslik, mtype, poster)
+                    elif not is_selected_now and was_fav_before:
+                        remove_favorite(st.session_state.username, tid)
+                st.rerun()
 
 
 # ==========================================
