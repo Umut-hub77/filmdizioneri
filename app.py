@@ -545,22 +545,33 @@ def render_hero_poster(poster_url, trailer_key):
     components.html(html_out, height=420, scrolling=False)
 
 
-def render_hero_actions(watch_link, imdb_link, tmdb_id, safe_title, m_type, poster_path, is_logged_in, is_fav):
-    fav_html = ""
-    if is_logged_in:
-        if is_fav:
-            fav_html = f'<a href="?action=remove_fav&id={tmdb_id}" class="hero-btn hero-btn-active">Favoriden Çıkar</a>'
-        else:
-            fav_html = (f'<a href="?action=add_fav&id={tmdb_id}&title={safe_title}&type={m_type}'
-                        f'&poster={poster_path}" class="hero-btn">Favoriye Ekle</a>')
-    html_out = f"""
+def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, poster_path, is_logged_in, is_fav):
+    # İZLE ve IMDb linkleri harici sitelere gittiği için (target="_blank")
+    # bunlarda sorun yok, session state'i etkilemiyorlar.
+    st.markdown(f"""
     <div class="hero-actions">
       <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">İZLE</a>
       <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">IMDb</a>
-      {fav_html}
     </div>
-    """
-    st.markdown(html_out, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+    # Favori butonu artık gerçek bir Streamlit butonu.
+    # Böylece sayfa tam yenilenmiyor, session_state (giriş bilgisi) korunuyor.
+    if is_logged_in:
+        fcol, _ = st.columns([1, 3])
+        with fcol:
+            if is_fav:
+                if st.button("Favoriden Çıkar", key=f"fav_remove_{tmdb_id}", type="primary", use_container_width=True):
+                    remove_favorite(st.session_state.username, tmdb_id)
+                    st.toast("Favorilerden çıkarıldı!")
+                    st.rerun()
+            else:
+                if st.button("Favoriye Ekle", key=f"fav_add_{tmdb_id}", type="primary", use_container_width=True):
+                    add_favorite(st.session_state.username, tmdb_id, real_title, m_type, poster_path)
+                    st.toast("Favorilere eklendi!")
+                    st.rerun()
+    else:
+        st.caption("Favorilere eklemek için giriş yapmalısınız.")
 
 
 # ==========================================
@@ -712,7 +723,7 @@ media_type = 'tv' if secim == "Dizi" else 'movie'
 if secim == "Favorilerim":
     st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
     if not st.session_state.logged_in:
-        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için sağ üstten giriş yapmalısınız.")
+        st.info("Kendi favori listenizi oluşturmak ve görüntülemek için sol üstten giriş yapmalısınız.")
     else:
         fav_data = get_favorites(st.session_state.username)
         if not fav_data:
