@@ -69,6 +69,18 @@ def make_hashes(password: str) -> str:
 def check_hashes(password: str, hashed_text: str) -> bool:
     return make_hashes(password) == hashed_text
 
+def make_session_token(username: str) -> str:
+    """Sayfa tam yenilendiğinde (iframe linkleri nedeniyle) session_state sıfırlansa
+    bile kullanıcıyı sessizce geri giriş yapabilmek için kullanılan token."""
+    with get_db() as conn:
+        row = conn.execute('SELECT password FROM users WHERE username=?', (username,)).fetchone()
+    if not row:
+        return ""
+    return hashlib.sha256((username + row[0]).encode()).hexdigest()[:16]
+
+
+def verify_session_token(username: str, token: str) -> bool:
+    return bool(username) and bool(token) and make_session_token(username) == token
 
 def add_user(username: str, password: str) -> bool:
     """Yeni kullanıcı ekler. Kullanıcı adı zaten varsa False döner."""
@@ -130,6 +142,16 @@ if "logged_in" not in st.session_state:
 # --- URL PARAMETRELERİ İLE HTML'DEN TETİKLENEN FAVORİ İŞLEMLERİ ---
 if "action" in st.query_params:
     action = st.query_params["action"]
+
+    # Iframe içindeki linkler tam sayfa yenilemesine sebep olduğu için
+    # session_state sıfırlanmış olabilir. Token doğruysa oturumu sessizce geri yükle.
+    if not st.session_state.logged_in:
+        qp_user = st.query_params.get("u")
+        qp_tok = st.query_params.get("tok")
+        if verify_session_token(qp_user, qp_tok):
+            st.session_state.logged_in = True
+            st.session_state.username = qp_user
+
     if st.session_state.logged_in:
         fav_id = st.query_params.get("id")
         if action == "add_fav":
