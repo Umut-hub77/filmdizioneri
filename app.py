@@ -690,18 +690,6 @@ def render_scrollable_strip(title: str, items: list):
             default_selected = [label for label, (tid, *_r) in item_map.items() if tid in user_favs_set]
             widget_key = f"favsel_{container_id}"
 
-            # Seçim değiştiğinde tetiklenecek güvenli fonksiyon
-            def fav_selection_changed(w_key, current_map, old_favs):
-                new_selection = st.session_state[w_key]
-                
-                for lbl, (tid, baslik, mtype, poster) in current_map.items():
-                    is_selected_now = lbl in new_selection
-                    was_fav_before = tid in old_favs
-                    
-                    if is_selected_now and not was_fav_before:
-                        add_favorite(st.session_state.username, tid, baslik, mtype, poster)
-                    elif not is_selected_now and was_fav_before:
-                        remove_favorite(st.session_state.username, tid)
 
             # Arayüz aracı (Widget)
             st.multiselect(
