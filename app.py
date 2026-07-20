@@ -69,6 +69,7 @@ def make_hashes(password: str) -> str:
 def check_hashes(password: str, hashed_text: str) -> bool:
     return make_hashes(password) == hashed_text
 
+
 def make_session_token(username: str) -> str:
     """Sayfa tam yenilendiğinde (iframe linkleri nedeniyle) session_state sıfırlansa
     bile kullanıcıyı sessizce geri giriş yapabilmek için kullanılan token."""
@@ -81,6 +82,7 @@ def make_session_token(username: str) -> str:
 
 def verify_session_token(username: str, token: str) -> bool:
     return bool(username) and bool(token) and make_session_token(username) == token
+
 
 def add_user(username: str, password: str) -> bool:
     """Yeni kullanıcı ekler. Kullanıcı adı zaten varsa False döner."""
@@ -349,10 +351,10 @@ def render_profile_corner():
                         st.error("Kullanıcı adı veya şifre hatalı!")
         else:
             st.markdown(f"### Merhaba, **{st.session_state.username}**")
-            
+
             # Sekmeler ile menü düzeni
             tab1, tab2 = st.tabs(["👤 Profil & Ayarlar", "⚙️ Hesap"])
-            
+
             with tab1:
                 uploaded = st.file_uploader("Profil fotoğrafını güncelle", type=["png", "jpg", "jpeg"], key="pfp_upload")
                 if uploaded:
@@ -360,7 +362,7 @@ def render_profile_corner():
                     set_profile_pic(st.session_state.username, b64)
                     st.rerun()
                 st.caption("Favorilerini üst menüdeki **Favorilerim** sekmesinden görebilirsin.")
-            
+
             with tab2:
                 if st.button("Çıkış Yap", key="logout_corner", use_container_width=True):
                     st.session_state.logged_in = False
@@ -526,7 +528,7 @@ def render_hero_poster(poster_url, trailer_key):
     .hero-video-box.active { pointer-events:auto; background:black; }
     .hero-video-box iframe { width:100%; height:100%; border:0; }
     </style></head><body>
-    
+
     <div class="hero-poster" id="heroPoster">
         <img src="__POSTER_URL__" class="hero-img" id="heroImg">
         <div class="hero-video-box" id="heroVideoBox"></div>
@@ -541,7 +543,7 @@ def render_hero_poster(poster_url, trailer_key):
 
     poster.addEventListener('click', function() {
         if (!trailerKey) return; // Fragman yoksa hiçbir şey yapma
-        
+
         if (!isPlaying) {
             // Tıklandığında video kutusunu aktif et, videoyu ekle ve afişi gizle
             box.classList.add('active');
@@ -560,10 +562,10 @@ def render_hero_poster(poster_url, trailer_key):
     </script>
     </body></html>
     """
-    
+
     html_out = (tpl.replace("__POSTER_URL__", poster_url)
                    .replace("__TRAILER_KEY__", trailer_key or ""))
-                   
+
     components.html(html_out, height=420, scrolling=False)
 
 
@@ -577,7 +579,8 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
     </div>
     """, unsafe_allow_html=True)
 
-    # Favori butonu artık gerçek bir Streamlit butonu.
+    # Favori butonu gerçek bir Streamlit butonu (bu fonksiyon iframe içinde değil,
+    # doğrudan ana sayfada render ediliyor, o yüzden Python'a direkt erişebiliyoruz).
     # Böylece sayfa tam yenilenmiyor, session_state (giriş bilgisi) korunuyor.
     if is_logged_in:
         fcol, _ = st.columns([1, 3])
@@ -603,8 +606,11 @@ def render_scrollable_strip(title: str, items: list):
     if not items:
         return
     container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
+
+    # Sayfa tam yenilense bile oturumu geri yükleyebilmek için token.
     current_user = st.session_state.username if st.session_state.logged_in else ""
     current_token = make_session_token(current_user) if current_user else ""
+    enc_user = urllib.parse.quote(current_user)
 
     html_content = f"""
     <!DOCTYPE html>
@@ -635,7 +641,7 @@ def render_scrollable_strip(title: str, items: list):
         justify-content: center; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: 0.3s;
     }}
     .show-overlay {{ opacity: 1 !important; pointer-events: auto !important; }}
-    .action-btn {{ padding: 6px 10px; border-radius: 4px; text-decoration: none !important; font-size: 0.7rem; font-weight: bold; width: 85%; text-align: center; box-sizing: border-box; }}
+    .action-btn {{ padding: 6px 10px; border-radius: 4px; text-decoration: none !important; font-size: 0.7rem; font-weight: bold; width: 85%; text-align: center; box-sizing: border-box; cursor: pointer; }}
     .btn-red {{ background: #E50914; color: white !important; }}
     .btn-dark {{ background: transparent; border: 1px solid white; color: white !important; }}
     .btn-fav-add {{ background: transparent; border: 1px solid #ff3366; color: #ff3366 !important; }}
@@ -661,6 +667,7 @@ def render_scrollable_strip(title: str, items: list):
             continue
 
         safe_baslik = urllib.parse.quote(baslik)
+        safe_poster = urllib.parse.quote(poster_path)
         watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
         m_type_guess = 'movie' if 'title' in row else 'tv'
 
@@ -668,20 +675,23 @@ def render_scrollable_strip(title: str, items: list):
         imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
         image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
 
-        # NOT: target="_top" -> iframe içindeki link, Streamlit sayfasının tamamını
-        # (üst pencereyi) yönlendirir. JS ile window.top.location değiştirmek yerine
-        # native <a> linki kullanmak, tarayıcının sandbox/iframe kısıtlamalarına takılmaz.
+        # NOT: Streamlit'in components.html() ile oluşturduğu iframe, kendi ayrı
+        # kaynağından (srcdoc) yüklenir. Bu yüzden "?action=..." gibi GÖRELİ bir
+        # href, üst sayfaya değil, iframe'in kendi (boş) kaynağına göre çözümlenir
+        # ve link ya hiç çalışmaz ya da yanlış adrese gider — favoriler bu yüzden
+        # kaydedilmiyordu. Çözüm: JS ile window.top.location'dan MUTLAK URL inşa
+        # edip öyle yönlendirmek.
         if str(tmdb_id) in user_favs_set:
             fav_btn = (
-                f'<a href="?action=remove_fav&id={tmdb_id}&u={urllib.parse.quote(current_user)}&tok={current_token}" '
-                f'target="_top" class="action-btn btn-fav-remove">❌ Favoriden Çıkar</a>'
+                f'<a href="#" class="action-btn btn-fav-remove" '
+                f"onclick=\"favAction('remove_fav','{tmdb_id}','','','');return false;\">"
+                f'❌ Favoriden Çıkar</a>'
             )
         else:
             fav_btn = (
-                f'<a href="?action=add_fav&id={tmdb_id}&title={safe_baslik}'
-                f'&type={m_type_guess}&poster={poster_path}'
-                f'&u={urllib.parse.quote(current_user)}&tok={current_token}" '
-                f'target="_top" class="action-btn btn-fav-add">❤️ Favoriye Ekle</a>'
+                f'<a href="#" class="action-btn btn-fav-add" '
+                f"onclick=\"favAction('add_fav','{tmdb_id}','{safe_baslik}','{m_type_guess}','{safe_poster}');return false;\">"
+                f'❤️ Favoriye Ekle</a>'
             )
 
         html_content += f"""
@@ -696,7 +706,22 @@ def render_scrollable_strip(title: str, items: list):
         </div>
         </div>
         """
-    html_content += "</div></body></html>"
+
+    html_content += f"""
+    </div>
+    <script>
+    function favAction(action, id, title, type, poster) {{
+        var base = window.top.location.origin + window.top.location.pathname;
+        var url = base + "?action=" + action + "&id=" + encodeURIComponent(id);
+        if (title)  url += "&title=" + title;    // zaten yüzde-kodlanmış (Python tarafında)
+        if (type)   url += "&type=" + type;
+        if (poster) url += "&poster=" + poster;  // zaten yüzde-kodlanmış
+        url += "&u={enc_user}&tok={current_token}";
+        window.top.location.href = url;
+    }}
+    </script>
+    </body></html>
+    """
     components.html(html_content, height=330, scrolling=False)
 
 
@@ -813,9 +838,9 @@ elif secim == "Ne İzlesem?":
                 st.markdown(f"<p style='line-height:1.6; color:#a0aec0;'>{ozet}</p>", unsafe_allow_html=True)
 
                 render_hero_actions(
-    watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'),
-    st.session_state.logged_in, str(tmdb_id) in user_favs_set
-)
+                    watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'),
+                    st.session_state.logged_in, str(tmdb_id) in user_favs_set
+                )
         else:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
