@@ -77,7 +77,15 @@ def get_db():
         conn.close()
 
 
+@st.cache_resource
 def init_db():
+    """DİKKAT: Bu fonksiyon @st.cache_resource ile işaretli, yani Streamlit'in her
+    buton tıklamasında tüm scripti baştan çalıştırması sırasında TEKRAR TEKRAR
+    çalışmaz — uygulama süreci başına yalnızca bir kez çalışır. Bu olmadan, her
+    favori ekleme/çıkarma işleminin tetiklediği st.rerun() sonrasında bu fonksiyon
+    (ve içindeki mükerrer kayıt temizleme sorgusu) yeniden çalışıyor ve az önce
+    eklenen kaydı daha kullanıcı göremeden silme riski taşıyordu — 'hiçbir şey
+    kaydedilmiyor' şikayetinin asıl sebebi büyük ihtimalle buydu."""
     with get_db() as conn:
         c = conn.cursor()
         c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
@@ -91,6 +99,23 @@ def init_db():
                 pass  
 
     _migrate_favorites_unique_constraint()
+    _dedupe_favorites()
+    return True
+
+
+def _dedupe_favorites():
+    """Bazı eski/geçiş verilerinde (username, tmdb_id, media_type) üçlüsü aynı olan
+    birden fazla satır kalmış olabilir (UNIQUE kısıtı sonradan eklendiği için).
+    Böyle satırlar arayüzde aynı widget key'ini üretip StreamlitDuplicateElementKey
+    hatasına yol açıyordu. Her (username, tmdb_id, media_type) için en güncel (en
+    büyük rowid'li) satırı tutup diğerlerini kalıcı olarak siliyoruz."""
+    with get_db() as conn:
+        conn.execute('''
+            DELETE FROM favorites
+            WHERE rowid NOT IN (
+                SELECT MAX(rowid) FROM favorites GROUP BY username, tmdb_id, media_type
+            )
+        ''')
 
 
 def _migrate_favorites_unique_constraint():
@@ -585,7 +610,7 @@ def render_profile_corner():
                     st.info("Henüz favori eklemediniz.")
                 else:
                     st.caption(f"Toplam {len(fav_rows)} favori (sınır yok)")
-                    for tmdb_id, title, mtype, poster in fav_rows[:8]:
+                    for pop_idx, (tmdb_id, title, mtype, poster) in enumerate(fav_rows[:8]):
                         c1, c2, c3 = st.columns([1, 4, 2])
                         with c1:
                             if poster:
@@ -594,7 +619,7 @@ def render_profile_corner():
                             st.write(f"**{title}**")
                             st.caption("Film" if mtype == "movie" else "Dizi")
                         with c3:
-                            if st.button("Çıkar", key=f"pop_remove_{tmdb_id}_{mtype}", use_container_width=True):
+                            if st.button("Çıkar", key=f"pop_remove_{pop_idx}_{tmdb_id}_{mtype}", use_container_width=True):
                                 remove_favorite(username, tmdb_id, mtype)
                                 st.rerun()
                     if len(fav_rows) > 8:
@@ -942,7 +967,7 @@ def render_scrollable_strip(title: str, items: list):
                         st.caption(baslik[:22] + ("…" if len(baslik) > 22 else ""))
                         btn_label = "Çıkar" if is_fav_now else "Ekle"
                         btn_type = "primary" if is_fav_now else "secondary"
-                        if st.button(btn_label, key=f"togglefav_{container_id}_{tmdb_id}_{m_type_guess}",
+                        if st.button(btn_label, key=f"togglefav_{container_id}_{i}_{tmdb_id}_{m_type_guess}",
                                      use_container_width=True, type=btn_type):
                             if is_fav_now:
                                 remove_favorite(st.session_state.username, tmdb_id, m_type_guess)
@@ -1010,7 +1035,7 @@ if secim == "Favorilerim":
             filtered_results = [i for i in search_results if i.get('poster_path')][:5] # En iyi 5 sonucu gösterir
 
             if filtered_results:
-                for item in filtered_results:
+                for qa_idx, item in enumerate(filtered_results):
                     baslik = item.get('title') or item.get('name')
                     tmdb_id = item.get('id')
                     m_type = 'movie' if 'title' in item else 'tv'
@@ -1024,9 +1049,9 @@ if secim == "Favorilerim":
                     with col_btn:
                         is_already_fav = (str(tmdb_id), m_type) in user_favs_set
                         if is_already_fav:
-                            st.button("Eklendi", disabled=True, key=f"quick_added_{tmdb_id}_{m_type}")
+                            st.button("Eklendi", disabled=True, key=f"quick_added_{qa_idx}_{tmdb_id}_{m_type}")
                         else:
-                            if st.button("EKLE", key=f"quick_add_{tmdb_id}_{m_type}", type="primary"):
+                            if st.button("EKLE", key=f"quick_add_{qa_idx}_{tmdb_id}_{m_type}", type="primary"):
                                 add_favorite(st.session_state.username, tmdb_id, baslik, m_type, poster)
                                 st.toast(f"{baslik} başarıyla eklendi!")
                                 st.rerun() # Sayfayı anında yenileyip listeye yansıtır
@@ -1047,8 +1072,13 @@ if secim == "Favorilerim":
             # widget key'inin iki kez üretilmesine (StreamlitDuplicateElementKey) yol
             # açıyordu. Artık her öğeye SADECE gerçek türüne uygun anahtar ekleniyor.
             fav_items = []
+            seen_fav_keys = set()
             for row in fav_data:
                 fav_tmdb_id, fav_title, fav_mtype, fav_poster = row
+                dedup_key = (str(fav_tmdb_id), fav_mtype)
+                if dedup_key in seen_fav_keys:
+                    continue  # olası mükerrer kayıtlara karşı ekstra güvenlik
+                seen_fav_keys.add(dedup_key)
                 fav_item = {"id": fav_tmdb_id, "poster_path": fav_poster}
                 if fav_mtype == 'movie':
                     fav_item["title"] = fav_title
