@@ -31,17 +31,46 @@ MIN_PASSWORD_LEN = 6
 MAX_AVATAR_UPLOAD_MB = 8
 AVATAR_MAX_DIMENSION = 512
 
+# --- Kalıcı veritabanı desteği (Turso / libSQL) -----------------------------
+# Streamlit Community Cloud gibi platformlarda uygulama bir süre kullanılmayınca
+# "uyutulur" ve tekrar başlatıldığında konteyner GitHub reposundan sıfırdan
+# oluşturulur. Bu yüzden yerel diske yazılan nextwatch.db dosyası (ve içindeki
+# tüm kullanıcılar/favoriler) her uyanışta sıfırlanır.
+#
+# Çözüm: st.secrets içinde TURSO_DATABASE_URL ve TURSO_AUTH_TOKEN tanımlıysa
+# uzak/kalıcı Turso veritabanına bağlanılır. Tanımlı değilse (örn. yerelde
+# geliştirirken) eskisi gibi yerel sqlite dosyasına düşer.
+#
+# Kurulum:
+#   1) https://turso.tech üzerinden ücretsiz hesap açın, bir veritabanı oluşturun.
+#   2) `turso db show <db-adi> --url` ve `turso db tokens create <db-adi>`
+#      komutlarıyla URL ve token'ı alın.
+#   3) requirements.txt dosyanıza `libsql` ekleyin.
+#   4) Streamlit Cloud'da Settings > Secrets kısmına şunları ekleyin:
+#        TURSO_DATABASE_URL = "libsql://sizin-db-adiniz.turso.io"
+#        TURSO_AUTH_TOKEN = "sizin-tokeniniz"
+TURSO_DATABASE_URL = st.secrets.get("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = st.secrets.get("TURSO_AUTH_TOKEN")
+
+if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
+    import libsql
+
 @contextmanager
 def get_db():
     """Tüm DB işlemleri için tek noktadan bağlantı yönetimi.
     Bağlantı otomatik kapanır, hata olursa da sızıntı olmaz.
-    WAL modu + busy_timeout, birden fazla kullanıcının aynı anda yazması
-    durumunda 'database is locked' hatalarını büyük ölçüde engeller."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
-    try:
+    TURSO_DATABASE_URL/TOKEN tanımlıysa kalıcı Turso veritabanına, değilse
+    yerel sqlite dosyasına bağlanır. WAL modu + busy_timeout, birden fazla
+    kullanıcının aynı anda yazması durumunda 'database is locked' hatalarını
+    büyük ölçüde engeller (yalnızca yerel sqlite modunda geçerlidir)."""
+    if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
+        conn = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    else:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=10000")
         conn.execute("PRAGMA foreign_keys=ON")
+    try:
         yield conn
         conn.commit()
     finally:
@@ -58,7 +87,7 @@ def init_db():
         for col_def in ["profile_pic TEXT", "created_at TEXT", "bio TEXT"]:
             try:
                 c.execute(f'ALTER TABLE users ADD COLUMN {col_def}')
-            except sqlite3.OperationalError:
+            except Exception:
                 pass  
 
     _migrate_favorites_unique_constraint()
@@ -148,6 +177,10 @@ def add_user(username: str, password: str) -> bool:
         return True
     except sqlite3.IntegrityError:
         return False
+    except Exception as e:
+        if "UNIQUE" in str(e).upper():
+            return False
+        raise
 
 
 def login_user(username: str, password: str) -> bool:
@@ -228,6 +261,9 @@ def add_favorite(username, tmdb_id, title, media_type, poster_path):
                          (username, str(tmdb_id), title, media_type, poster_path))
     except sqlite3.IntegrityError:
         pass 
+    except Exception as e:
+        if "UNIQUE" not in str(e).upper():
+            raise
 
 
 def remove_favorite(username, tmdb_id, media_type=None):
@@ -1015,6 +1051,13 @@ elif secim == "Ne İzlesem?":
 
     if "tur_tipi" not in st.session_state:
         st.session_state.tur_tipi = "Film"
+    # Öneri sonucu, sayfa yeniden çizildiğinde (örn. favori butonuna basılınca
+    # tetiklenen st.rerun() sırasında) kaybolmasın diye session_state'te tutulur.
+    if "ne_izlesem_sonuc" not in st.session_state:
+        st.session_state.ne_izlesem_sonuc = None
+    if "ne_izlesem_denendi" not in st.session_state:
+        st.session_state.ne_izlesem_denendi = False
+
     st.markdown("<p style='color:#8c8c8c; font-weight:600; font-size:0.85rem; text-transform:uppercase;'>Format</p>", unsafe_allow_html=True)
 
     fcol1, fcol2, _spacer = st.columns([1, 1, 4])
@@ -1042,7 +1085,12 @@ elif secim == "Ne İzlesem?":
 
         if st.button("ÖNERİ GETİR", use_container_width=True, type="primary"):
             with st.spinner("Arşiv taranıyor..."):
-                chosen = get_random_recommendation(genre_dict[selected_genre_name], m_type, TMDB_API_KEY)
+                st.session_state.ne_izlesem_sonuc = get_random_recommendation(
+                    genre_dict[selected_genre_name], m_type, TMDB_API_KEY
+                )
+            st.session_state.ne_izlesem_denendi = True
+
+        chosen = st.session_state.ne_izlesem_sonuc
 
         if chosen:
             st.markdown("<hr style='border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
@@ -1071,7 +1119,7 @@ elif secim == "Ne İzlesem?":
                     watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'),
                     st.session_state.logged_in, (str(tmdb_id), m_type) in user_favs_set
                 )
-        else:
+        elif st.session_state.ne_izlesem_denendi:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
 else:
