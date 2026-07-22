@@ -31,24 +31,6 @@ MIN_PASSWORD_LEN = 6
 MAX_AVATAR_UPLOAD_MB = 8
 AVATAR_MAX_DIMENSION = 512
 
-# --- Kalıcı veritabanı desteği (Turso / libSQL) -----------------------------
-# Streamlit Community Cloud gibi platformlarda uygulama bir süre kullanılmayınca
-# "uyutulur" ve tekrar başlatıldığında konteyner GitHub reposundan sıfırdan
-# oluşturulur. Bu yüzden yerel diske yazılan nextwatch.db dosyası (ve içindeki
-# tüm kullanıcılar/favoriler) her uyanışta sıfırlanır.
-#
-# Çözüm: st.secrets içinde TURSO_DATABASE_URL ve TURSO_AUTH_TOKEN tanımlıysa
-# uzak/kalıcı Turso veritabanına bağlanılır. Tanımlı değilse (örn. yerelde
-# geliştirirken) eskisi gibi yerel sqlite dosyasına düşer.
-#
-# Kurulum:
-#   1) https://turso.tech üzerinden ücretsiz hesap açın, bir veritabanı oluşturun.
-#   2) `turso db show <db-adi> --url` ve `turso db tokens create <db-adi>`
-#      komutlarıyla URL ve token'ı alın.
-#   3) requirements.txt dosyanıza `libsql` ekleyin.
-#   4) Streamlit Cloud'da Settings > Secrets kısmına şunları ekleyin:
-#        TURSO_DATABASE_URL = "libsql://sizin-db-adiniz.turso.io"
-#        TURSO_AUTH_TOKEN = "sizin-tokeniniz"
 TURSO_DATABASE_URL = st.secrets.get("TURSO_DATABASE_URL")
 TURSO_AUTH_TOKEN = st.secrets.get("TURSO_AUTH_TOKEN")
 
@@ -1024,7 +1006,7 @@ if secim == "Favorilerim":
     if not st.session_state.logged_in:
         st.info("Kendi favori listenizi oluşturmak ve işlem yapmak için sağ üstten giriş yapmalısınız.")
     else:
-        st.caption(f"Toplam {get_favorite_count(st.session_state.username)} favori — istediğiniz kadar ekleyebilirsiniz, sınır yoktur.")
+        st.caption(f"Toplam {get_favorite_count(st.session_state.username)} favori")
         st.markdown("### Hızlı Favori Ekle")
         # Favoriler sekmesi içine özel arama çubuğu
         fav_search = st.text_input("Listeye eklemek istediğiniz filmi veya diziyi arayın...", key="fav_search_input").strip()
