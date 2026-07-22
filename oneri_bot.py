@@ -1,152 +1,1212 @@
-import sys
-import os
+import streamlit as st
+import streamlit.components.v1 as components
+import pandas as pd
 import requests
 import difflib
-import pandas as pd
-from pathlib import Path
+import re
+import random
+import urllib.parse
+import sqlite3
+import hashlib
+import secrets
+import html
+import io
+import base64
+from datetime import datetime
+from contextlib import contextmanager
+from PIL import Image, UnidentifiedImageError
 
-def load_imdb_data() -> pd.DataFrame:
-    """Basics ve Ratings dosyalarını hızlıca okuyup birleştirir."""
-    folder = Path(__file__).parent
-    basics_path = list(folder.glob('title.basics*.tsv*'))
-    ratings_path = list(folder.glob('title.ratings*.tsv*'))
 
-    if not basics_path:
-        print("HATA: 'title.basics.tsv.gz' dosyası bulunamadı!")
-        sys.exit(1)
+try:
+    _page_icon = Image.open("icon.png")
+except Exception:
+    _page_icon = "🍿"
 
-    print("IMDb Yerel Veritabanı yükleniyor (Hızlı arama için)...")
-    df_basics = pd.read_csv(
-        basics_path[0], sep='\t', quoting=3, na_values='\\N',
-        # Türlere (genres) artık ihtiyacımız yok, API'den çekeceğiz
-        usecols=['tconst', 'titleType', 'primaryTitle', 'startYear'],
-        dtype={'tconst': str, 'titleType': str, 'primaryTitle': str, 'startYear': str}
-    )
-    df_basics = df_basics[df_basics['titleType'] == 'movie'].copy()
+st.set_page_config(page_title="NextWatch", page_icon=_page_icon, layout="wide")
 
-    if ratings_path:
-        df_ratings = pd.read_csv(
-            ratings_path[0], sep='\t', quoting=3, na_values='\\N',
-            usecols=['tconst', 'averageRating', 'numVotes']
-        )
-        df = df_basics.merge(df_ratings, on='tconst', how='left')
+
+TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "10e5fa6138c11560285b0c8af67e1376")
+DB_PATH = "nextwatch.db"
+MIN_PASSWORD_LEN = 6
+MAX_AVATAR_UPLOAD_MB = 8
+AVATAR_MAX_DIMENSION = 512
+
+# --- Kalıcı veritabanı desteği (Turso / libSQL) -----------------------------
+# Streamlit Community Cloud gibi platformlarda uygulama bir süre kullanılmayınca
+# "uyutulur" ve tekrar başlatıldığında konteyner GitHub reposundan sıfırdan
+# oluşturulur. Bu yüzden yerel diske yazılan nextwatch.db dosyası (ve içindeki
+# tüm kullanıcılar/favoriler) her uyanışta sıfırlanır.
+#
+# Çözüm: st.secrets içinde TURSO_DATABASE_URL ve TURSO_AUTH_TOKEN tanımlıysa
+# uzak/kalıcı Turso veritabanına bağlanılır. Tanımlı değilse (örn. yerelde
+# geliştirirken) eskisi gibi yerel sqlite dosyasına düşer.
+#
+# Kurulum:
+#   1) https://turso.tech üzerinden ücretsiz hesap açın, bir veritabanı oluşturun.
+#   2) `turso db show <db-adi> --url` ve `turso db tokens create <db-adi>`
+#      komutlarıyla URL ve token'ı alın.
+#   3) requirements.txt dosyanıza `libsql` ekleyin.
+#   4) Streamlit Cloud'da Settings > Secrets kısmına şunları ekleyin:
+#        TURSO_DATABASE_URL = "libsql://sizin-db-adiniz.turso.io"
+#        TURSO_AUTH_TOKEN = "sizin-tokeniniz"
+TURSO_DATABASE_URL = st.secrets.get("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = st.secrets.get("TURSO_AUTH_TOKEN")
+
+if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
+    import libsql
+
+@contextmanager
+def get_db():
+    """Tüm DB işlemleri için tek noktadan bağlantı yönetimi.
+    Bağlantı otomatik kapanır, hata olursa da sızıntı olmaz.
+    TURSO_DATABASE_URL/TOKEN tanımlıysa kalıcı Turso veritabanına, değilse
+    yerel sqlite dosyasına bağlanır. WAL modu + busy_timeout, birden fazla
+    kullanıcının aynı anda yazması durumunda 'database is locked' hatalarını
+    büyük ölçüde engeller (yalnızca yerel sqlite modunda geçerlidir)."""
+    if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
+        conn = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
     else:
-        df = df_basics
-        df['numVotes'] = 0
-        df['averageRating'] = 0.0
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
 
-    df['numVotes'] = df['numVotes'].fillna(0).astype(int)
-    df['averageRating'] = df['averageRating'].fillna(0.0)
-    df['startYear'] = df['startYear'].fillna('?')
 
-    del df_basics
-    if ratings_path: del df_ratings
+def init_db():
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, profile_pic TEXT)')
+        c.execute('''CREATE TABLE IF NOT EXISTS favorites
+                     (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
+                      UNIQUE(username, tmdb_id, media_type))''')
+        for col_def in ["profile_pic TEXT", "created_at TEXT", "bio TEXT"]:
+            try:
+                c.execute(f'ALTER TABLE users ADD COLUMN {col_def}')
+            except Exception:
+                pass  
 
-    return df.reset_index(drop=True)
+    _migrate_favorites_unique_constraint()
 
-def get_tmdb_recommendations(imdb_id: str, api_key: str, limit: int = 5):
+
+def _migrate_favorites_unique_constraint():
+    """Uygulamanın önceki sürümlerinde 'favorites' tablosu (username, tmdb_id) üzerinde
+    UNIQUE kısıtına sahipti. Bu, aynı numaralı ID'ye sahip bir filmin ve bir dizinin
+    aynı kullanıcı için çakışmasına (birinin favoriye eklenememesine) sebep olabiliyordu.
+    Var olan bir veritabanı hâlâ eski şemadaysa, veriyi kaybetmeden yeni
+    (username, tmdb_id, media_type) şemasına taşır."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='favorites'"
+        ).fetchone()
+        if not row or not row[0]:
+            return
+        normalized = row[0].replace(" ", "").replace("\n", "").upper()
+        if "UNIQUE(USERNAME,TMDB_ID,MEDIA_TYPE)" in normalized:
+            return  
+
+        conn.execute("ALTER TABLE favorites RENAME TO favorites_old_migration")
+        conn.execute('''CREATE TABLE favorites
+                     (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
+                      UNIQUE(username, tmdb_id, media_type))''')
+        conn.execute('''INSERT OR IGNORE INTO favorites (username, tmdb_id, title, media_type, poster_path)
+                         SELECT username, tmdb_id, title, media_type, poster_path FROM favorites_old_migration''')
+        conn.execute("DROP TABLE favorites_old_migration")
+
+
+init_db()
+
+
+def make_hashes(password: str, salt: str = None) -> str:
+    """Salt'lı PBKDF2-HMAC-SHA256 parola özeti üretir. Format: '<salt_hex>$<hash_hex>'."""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt), 200_000)
+    return f"{salt}${digest.hex()}"
+
+
+def check_hashes(password: str, stored: str) -> bool:
+    """Hem yeni (salt'lı) hem de eski (düz sha256) formatlarla geriye dönük uyumlu doğrulama."""
+    if not stored:
+        return False
+    if "$" in stored:
+        salt, _ = stored.split("$", 1)
+        candidate = make_hashes(password, salt)
+        return secrets.compare_digest(candidate, stored)
+    legacy = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    return secrets.compare_digest(legacy, stored)
+
+
+_NAME_FORBIDDEN_CHARS = set('<>"\'`\\/{}[]|;=~^%$#@&*')
+
+
+def get_initials(full_name: str) -> str:
+    """Bir kullanıcı adından (Ad Soyad) baş harfleri üretir. Boşsa '?' döner."""
+    parts = [p for p in full_name.split() if p]
+    if not parts:
+        return "?"
+    return "".join(p[0].upper() for p in parts[:2])
+
+
+def is_valid_name_part(value: str) -> bool:
+    """Ad/soyad alanları için basit ama etkili bir doğrulama:
+    - Boş olamaz, 30 karakteri geçemez
+    - Rakam veya HTML/şablon açısından tehlikeli karakter içeremez
+    Bu, XSS'e karşı asıl korumanın (görüntülerken html.escape ile kaçışlama) yanında
+    ek bir savunma katmanıdır."""
+    value = value.strip()
+    if not (1 <= len(value) <= 30):
+        return False
+    if any(ch.isdigit() for ch in value):
+        return False
+    if any(ch in _NAME_FORBIDDEN_CHARS for ch in value):
+        return False
+    return True
+
+
+def add_user(username: str, password: str) -> bool:
+    """Yeni kullanıcı ekler. Kullanıcı adı zaten varsa False döner."""
+    try:
+        with get_db() as conn:
+            conn.execute('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)',
+                         (username, make_hashes(password), datetime.now().strftime("%Y-%m-%d")))
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    except Exception as e:
+        if "UNIQUE" in str(e).upper():
+            return False
+        raise
+
+
+def login_user(username: str, password: str) -> bool:
+    with get_db() as conn:
+        row = conn.execute('SELECT password FROM users WHERE username=?', (username,)).fetchone()
+    if not row or not check_hashes(password, row[0]):
+        return False
+    if "$" not in row[0]:
+        with get_db() as conn:
+            conn.execute('UPDATE users SET password=? WHERE username=?', (make_hashes(password), username))
+    return True
+
+
+def change_password(username: str, old_password: str, new_password: str) -> tuple[bool, str]:
+    if not login_user(username, old_password):
+        return False, "Mevcut şifreniz hatalı."
+    if len(new_password) < MIN_PASSWORD_LEN:
+        return False, f"Yeni şifre en az {MIN_PASSWORD_LEN} karakter olmalı."
+    with get_db() as conn:
+        conn.execute('UPDATE users SET password=? WHERE username=?', (make_hashes(new_password), username))
+    return True, "Şifreniz başarıyla güncellendi."
+
+
+def get_user_info(username):
+    with get_db() as conn:
+        row = conn.execute(
+            'SELECT profile_pic, created_at, bio FROM users WHERE username=?', (username,)
+        ).fetchone()
+    if not row:
+        return {"profile_pic": None, "created_at": None, "bio": ""}
+    return {"profile_pic": row[0], "created_at": row[1], "bio": row[2] or ""}
+
+
+def get_profile_pic(username):
+    return get_user_info(username)["profile_pic"]
+
+
+def process_avatar_upload(uploaded_file) -> tuple[bool, str]:
+    """Yüklenen profil fotoğrafını doğrular, makul bir boyuta küçültür ve
+    base64 JPEG olarak döner. Böylece:
+      - Sahte uzantılı / bozuk dosyalar (asıl bir görsel olmayanlar) reddedilir
+      - Çok büyük dosyalar veritabanını şişirmeden önce küçültülür
+    Dönen değer: (başarılı_mı, base64_veri_veya_hata_mesajı)
     """
-    Yerel veritabanında bulduğumuz filmin IMDb ID'sini (tconst) alır,
-    TMDb üzerinden o filmin gerçek 'İçerik/Hikaye' tabanlı önerilerini çeker.
-    """
-    # 1. IMDb ID'yi (Örn: tt0118688) TMDb ID'ye dönüştürme
+    raw_bytes = uploaded_file.getvalue()
+    if len(raw_bytes) > MAX_AVATAR_UPLOAD_MB * 1024 * 1024:
+        return False, f"Dosya çok büyük. En fazla {MAX_AVATAR_UPLOAD_MB} MB yükleyebilirsiniz."
+
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        img.verify()  
+        img = Image.open(io.BytesIO(raw_bytes))
+        img = img.convert("RGB")
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False, "Geçersiz veya bozuk bir görsel dosyası. Lütfen geçerli bir PNG/JPG yükleyin."
+
+    img.thumbnail((AVATAR_MAX_DIMENSION, AVATAR_MAX_DIMENSION))
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=85, optimize=True)
+    return True, base64.b64encode(buffer.getvalue()).decode()
+
+
+def set_profile_pic(username, b64_data):
+    with get_db() as conn:
+        conn.execute('UPDATE users SET profile_pic=? WHERE username=?', (b64_data, username))
+
+
+def set_bio(username, bio_text):
+    with get_db() as conn:
+        conn.execute('UPDATE users SET bio=? WHERE username=?', (bio_text, username))
+
+
+def add_favorite(username, tmdb_id, title, media_type, poster_path):
+    """Favorilere ekler. Sınır yoktur; aynı (kullanıcı, id, tür) zaten favoriyse sessizce yok sayılır."""
+    try:
+        with get_db() as conn:
+            conn.execute('INSERT INTO favorites VALUES (?, ?, ?, ?, ?)',
+                         (username, str(tmdb_id), title, media_type, poster_path))
+    except sqlite3.IntegrityError:
+        pass 
+    except Exception as e:
+        if "UNIQUE" not in str(e).upper():
+            raise
+
+
+def remove_favorite(username, tmdb_id, media_type=None):
+    with get_db() as conn:
+        if media_type:
+            conn.execute('DELETE FROM favorites WHERE username=? AND tmdb_id=? AND media_type=?',
+                         (username, str(tmdb_id), media_type))
+        else:
+            conn.execute('DELETE FROM favorites WHERE username=? AND tmdb_id=?', (username, str(tmdb_id)))
+
+
+def get_favorites(username):
+    with get_db() as conn:
+        return conn.execute(
+            'SELECT tmdb_id, title, media_type, poster_path FROM favorites WHERE username=? ORDER BY rowid DESC',
+            (username,)
+        ).fetchall()
+
+
+def get_favorite_count(username):
+    with get_db() as conn:
+        row = conn.execute('SELECT COUNT(*) FROM favorites WHERE username=?', (username,)).fetchone()
+    return row[0] if row else 0
+
+
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+
+user_favs_set = set()
+if st.session_state.logged_in:
+
+    user_favs_set = {(row[0], row[2]) for row in get_favorites(st.session_state.username)}
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;600;700;900&display=swap');
+
+html, body, [class*="css"] { font-family: 'Montserrat', sans-serif !important; }
+
+.block-container { padding-top: 2rem; max-width: 1300px; }
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Sidebar tamamen kaldırıldı, giriş/profil artık sağ üstte */
+section[data-testid="stSidebar"] { display: none !important; }
+div[data-testid="collapsedControl"] { display: none !important; }
+
+div[data-testid="stStatusWidget"], div[data-testid="stSpinner"], .stSpinner {
+    display: none !important; visibility: hidden !important;
+}
+
+.sub-title {
+    text-align: left; color: #a0aec0; font-size: 1.1rem;
+    margin-top: 5px; margin-bottom: 30px; font-weight: 400;
+}
+
+div[data-testid="stButton"] button,
+button[data-testid^="stBaseButton"] {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
+    transition: all 0.2s ease !important;
+    width: 100% !important;
+}
+
+div[data-testid="stButton"] button[kind="secondary"],
+button[data-testid="stBaseButton-secondary"] {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: #8c8c8c !important;
+    box-shadow: none !important;
+    text-transform: none !important;
+}
+div[data-testid="stButton"] button[kind="secondary"]:hover,
+button[data-testid="stBaseButton-secondary"]:hover {
+    color: #ffffff !important;
+    background: rgba(255,255,255,0.06) !important;
+}
+
+div[data-testid="stButton"] button[kind="primary"],
+button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(135deg, #E50914, #a8050d) !important;
+    border: none !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 16px rgba(229,9,20,0.55) !important;
+}
+div[data-testid="stButton"] button[kind="primary"]:hover,
+button[data-testid="stBaseButton-primary"]:hover {
+    box-shadow: 0 0 26px rgba(229,9,20,0.85) !important;
+    transform: translateY(-1px) !important;
+}
+
+.top-menu-row div[data-testid="stButton"] button {
+    padding: 12px 10px !important; font-size: 1rem !important;
+}
+
+.stTextInput > div > div > input { font-size: 1.1rem !important; padding: 12px 20px !important; }
+div[data-baseweb="input"] {
+    border-radius: 8px !important; border: 1px solid #333 !important;
+    background-color: #141414 !important; transition: all 0.3s ease;
+}
+div[data-baseweb="input"]:focus-within {
+    border-color: #E50914 !important; box-shadow: 0 0 10px rgba(229, 9, 20, 0.3) !important;
+}
+
+/* --- Sağ üstten ekranın üst-orta kısmına taşındı --- */
+div[data-testid="stPopover"] {
+    position: fixed !important;
+    top: 15px !important;       /* Üstten mesafe */
+    left: 50% !important;       /* Yatayda ortaya al */
+    transform: translateX(-50%) !important; /* Tam merkeze hizala */
+    z-index: 9999;
+}
+div[data-testid="stPopover"] > div > button {
+    width: 46px !important;
+    height: 46px !important;
+    min-width: 46px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+    background: linear-gradient(135deg, #E50914, #a8050d) !important;
+    border: 2px solid rgba(255,255,255,0.18) !important;
+    box-shadow: 0 0 14px rgba(229,9,20,0.55) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 1.05rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+}
+div[data-testid="stPopover"] > div > button:hover {
+    box-shadow: 0 0 22px rgba(229,9,20,0.85) !important;
+    transform: translateY(-1px);
+}
+
+/* --- Profil paneli --- */
+.profile-header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 4px 2px 20px 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 16px;
+}
+.profile-avatar {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: linear-gradient(135deg, #3a3a3a, #1a1a1a);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; font-weight: 700; color: #fff;
+    background-size: cover; background-position: center;
+    border: 1px solid rgba(255,255,255,0.14);
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+}
+.profile-name { font-size: 1.05rem; font-weight: 700; margin: 0; color: #f2f2f2; }
+.profile-sub { color: #7d8590; font-size: 0.78rem; margin: 3px 0 0 0; font-weight: 500; }
+.profile-stats {
+    display: flex; gap: 28px; margin: 2px 0 18px 0;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.profile-stat-block { display: flex; flex-direction: column; }
+.profile-stat-num { font-size: 1.3rem; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.1; }
+.profile-stat-label { font-size: 0.68rem; color: #7d8590; text-transform: uppercase; letter-spacing: 0.6px; margin: 3px 0 0 0; font-weight: 600; }
+.profile-bio { color: #a0aec0; font-size: 0.85rem; margin: -8px 0 16px 0; line-height: 1.5; }
+
+/* Sekme çubuğunu sadeleştir */
+div[data-testid="stTabs"] button[data-baseweb="tab"] {
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    color: #8c8c8c !important;
+    letter-spacing: 0.2px !important;
+}
+div[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #ffffff !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    background-color: #E50914 !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-border"] {
+    background-color: rgba(255,255,255,0.08) !important;
+}
+
+/* --- Detay sayfası (Ne İzlesem?) aksiyon butonları --- */
+.hero-actions { display:flex; gap:14px; margin: 18px 0 6px 0; flex-wrap: wrap; }
+.hero-btn {
+    background: linear-gradient(135deg, #E50914, #a8050d);
+    color: #ffffff !important; text-decoration: none !important;
+    padding: 12px 26px; border-radius: 8px; font-weight: 700; font-size: 0.9rem;
+    letter-spacing: 0.4px; text-transform: uppercase;
+    box-shadow: 0 0 16px rgba(229,9,20,0.55);
+    transition: all 0.2s ease; display: inline-block;
+}
+.hero-btn:hover { box-shadow: 0 0 26px rgba(229,9,20,0.85); transform: translateY(-2px); }
+.hero-btn-active {
+    background: linear-gradient(135deg, #2b2b2b, #141414);
+    border: 1px solid #E50914; box-shadow: none;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+def render_profile_corner():
+    if st.session_state.logged_in:
+        pic = get_profile_pic(st.session_state.username)
+        if pic:
+            st.markdown(f"""
+            <style>
+            div[data-testid="stPopover"] > div > button {{
+                background-image: url("data:image/png;base64,{pic}") !important;
+                background-size: cover !important;
+                background-position: center !important;
+                color: transparent !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+
+    trigger_label = "?" if not st.session_state.logged_in else get_initials(st.session_state.username)
+
+    with st.popover(trigger_label, use_container_width=False):
+        if not st.session_state.logged_in:
+            st.markdown("#### Giriş Yap / Kayıt Ol")
+            auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True, key="auth_mode_corner")
+
+            if auth_mode == "Kayıt Ol":
+                ncol1, ncol2 = st.columns(2)
+                with ncol1:
+                    ad_input = st.text_input("Ad", key="ad_corner").strip()
+                with ncol2:
+                    soyad_input = st.text_input("Soyad", key="soyad_corner").strip()
+                pass_input = st.text_input("Şifre", type="password", key="pass_corner")
+                full_name = re.sub(r"\s+", " ", f"{ad_input} {soyad_input}").strip()
+
+                if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
+                    if not ad_input or not soyad_input or not pass_input:
+                        st.warning("Lütfen ad, soyad ve şifre alanlarını doldurun.")
+                    elif not (is_valid_name_part(ad_input) and is_valid_name_part(soyad_input)):
+                        st.error("Ad/Soyad sadece harflerden oluşmalı ve rakam veya özel karakter (< > \" ' vb.) içermemelidir.")
+                    elif len(pass_input) < MIN_PASSWORD_LEN:
+                        st.error(f"Şifre en az {MIN_PASSWORD_LEN} karakter olmalı.")
+                    elif add_user(full_name, pass_input):
+                        st.success("Hesap oluşturuldu! Şimdi giriş yapabilirsiniz.")
+                    else:
+                        st.error("Bu ad soyad ile zaten bir hesap var!")
+            else:
+                full_name = st.text_input("Ad Soyad", key="user_corner").strip()
+                pass_input = st.text_input("Şifre", type="password", key="pass_corner")
+
+                if st.button("Onayla", type="primary", key="confirm_corner", use_container_width=True):
+                    if not full_name or not pass_input:
+                        st.warning("Lütfen alanları doldurun.")
+                    elif login_user(full_name, pass_input):
+                        st.session_state.logged_in = True
+                        st.session_state.username = full_name
+                        st.rerun()
+                    else:
+                        st.error("Ad soyad veya şifre hatalı!")
+        else:
+            username = st.session_state.username
+            info = get_user_info(username)
+            fav_count = get_favorite_count(username)
+            uye_tarihi = info["created_at"] or "Bilinmiyor"
+
+            initials = get_initials(username)
+
+            avatar_style = ""
+            avatar_content = html.escape(initials)
+            if info["profile_pic"]:
+                avatar_style = f'background-image:url("data:image/png;base64,{info["profile_pic"]}");'
+                avatar_content = ""
+
+            safe_username = html.escape(username)
+            safe_uye_tarihi = html.escape(uye_tarihi)
+            bio_html = f'<p class="profile-bio">{html.escape(info["bio"])}</p>' if info["bio"] else ""
+
+            st.markdown(f"""
+            <div class="profile-header">
+                <div class="profile-avatar" style="{avatar_style}">{avatar_content}</div>
+                <div>
+                    <p class="profile-name">{safe_username}</p>
+                    <p class="profile-sub">Üyelik tarihi: {safe_uye_tarihi}</p>
+                </div>
+            </div>
+            <div class="profile-stats">
+                <div class="profile-stat-block">
+                    <p class="profile-stat-num">{fav_count}</p>
+                    <p class="profile-stat-label">Favori</p>
+                </div>
+            </div>
+            {bio_html}
+            """, unsafe_allow_html=True)
+
+            tab1, tab2, tab3, tab4 = st.tabs(["Profil", "Favoriler", "Ayarlar", "Çıkış"])
+
+            with tab1:
+                uploaded = st.file_uploader(
+                    "Profil fotoğrafını güncelle", type=["png", "jpg", "jpeg"], key="pfp_upload",
+                    help=f"En fazla {MAX_AVATAR_UPLOAD_MB} MB, PNG veya JPG."
+                )
+                if uploaded:
+                    ok, result = process_avatar_upload(uploaded)
+                    if ok:
+                        set_profile_pic(username, result)
+                        st.rerun()
+                    else:
+                        st.error(result)
+
+                new_bio = st.text_area("Hakkında (bio)", value=info["bio"], max_chars=140,
+                                        placeholder="Kendinden kısaca bahset...", key="bio_input")
+                if st.button("Bio'yu Kaydet", key="save_bio", use_container_width=True):
+                    set_bio(username, new_bio.strip())
+                    st.toast("Bio güncellendi!")
+                    st.rerun()
+
+            with tab2:
+                fav_rows = get_favorites(username)
+                if not fav_rows:
+                    st.info("Henüz favori eklemediniz.")
+                else:
+                    st.caption(f"Toplam {len(fav_rows)} favori (sınır yok)")
+                    for tmdb_id, title, mtype, poster in fav_rows[:8]:
+                        c1, c2, c3 = st.columns([1, 4, 2])
+                        with c1:
+                            if poster:
+                                st.image(f"https://image.tmdb.org/t/p/w92{poster}", width=40)
+                        with c2:
+                            st.write(f"**{title}**")
+                            st.caption("Film" if mtype == "movie" else "Dizi")
+                        with c3:
+                            if st.button("Çıkar", key=f"pop_remove_{tmdb_id}_{mtype}", use_container_width=True):
+                                remove_favorite(username, tmdb_id, mtype)
+                                st.rerun()
+                    if len(fav_rows) > 8:
+                        st.caption(f"+{len(fav_rows) - 8} favori daha var. Tümü için **Favorilerim** sekmesine gidin.")
+
+            with tab3:
+                st.markdown("##### Şifre Değiştir")
+                old_pw = st.text_input("Mevcut Şifre", type="password", key="old_pw_corner")
+                new_pw = st.text_input("Yeni Şifre", type="password", key="new_pw_corner")
+                new_pw2 = st.text_input("Yeni Şifre (Tekrar)", type="password", key="new_pw2_corner")
+                if st.button("Şifreyi Güncelle", key="update_pw_corner", use_container_width=True):
+                    if not old_pw or not new_pw or not new_pw2:
+                        st.warning("Lütfen tüm alanları doldurun.")
+                    elif new_pw != new_pw2:
+                        st.error("Yeni şifreler eşleşmiyor.")
+                    else:
+                        ok, msg = change_password(username, old_pw, new_pw)
+                        if ok:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+
+            with tab4:
+                st.caption("Hesabınızdan çıkış yapmak üzeresiniz.")
+                if st.button("Çıkış Yap", key="logout_corner", type="primary", use_container_width=True):
+                    st.session_state.logged_in = False
+                    st.session_state.username = ""
+                    st.rerun()
+
+
+render_profile_corner()
+
+
+@st.cache_data
+def load_imdb_data():
+    try:
+        df = pd.read_parquet('imdb_verisi_kucuk.parquet')
+        if 'type' not in df.columns and 'titleType' in df.columns:
+            df['type'] = df['titleType'].apply(lambda x: 'movie' if x == 'movie' else 'tv')
+        df['genres'] = df['genres'].fillna('')
+        df['numVotes'] = df['numVotes'].fillna(0).astype(int)
+        df['averageRating'] = df['averageRating'].fillna(0.0)
+        df['startYear'] = df['startYear'].fillna('?')
+        return df.reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600)
+def get_imdb_id(tmdb_id, media_type):
+    try:
+        url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/external_ids"
+        res = requests.get(url, params={'api_key': TMDB_API_KEY}, timeout=3)
+        if res.status_code == 200:
+            return res.json().get('imdb_id')
+    except requests.RequestException:
+        pass
+    return None
+
+
+@st.cache_data(ttl=3600)
+def get_tmdb_trailer_key(tmdb_id, media_type):
+    """Resmi YouTube fragman anahtarını döner (varsa)."""
+    url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos"
+    try:
+        res = requests.get(url, params={'api_key': TMDB_API_KEY, 'language': 'tr-TR'}, timeout=3)
+        if res.status_code == 200:
+            results = res.json().get('results', [])
+            # tr-TR'de bulunamazsa İngilizce videoları dene
+            if not results:
+                res = requests.get(url, params={'api_key': TMDB_API_KEY}, timeout=3)
+                results = res.json().get('results', []) if res.status_code == 200 else []
+            for v in results:
+                if v.get('site') == 'YouTube' and v.get('type') == 'Trailer':
+                    return v.get('key')
+            for v in results:
+                if v.get('site') == 'YouTube':
+                    return v.get('key')
+    except requests.RequestException:
+        pass
+    return None
+
+
+@st.cache_data(ttl=3600)
+def get_tmdb_genres(api_key: str, media_type: str):
+    url = f"https://api.themoviedb.org/3/genre/{media_type}/list"
+    try:
+        resp = requests.get(url, params={'api_key': api_key, 'language': 'tr-TR'}, timeout=5)
+        if resp.status_code == 200:
+            return resp.json().get('genres', [])
+    except requests.RequestException:
+        pass
+    return []
+
+
+@st.cache_data(ttl=3600)
+def get_tmdb_search(query: str, api_key: str, media_type: str = "multi"):
+    url = f"https://api.themoviedb.org/3/search/{media_type}"
+    params = {'api_key': api_key, 'query': query, 'language': 'tr-TR', 'page': 1, 'include_adult': 'false'}
+    try:
+        response = requests.get(url, params=params, timeout=5)
+        if response.status_code == 200:
+            return response.json().get('results', [])
+    except requests.RequestException:
+        pass
+    return []
+
+
+@st.cache_data(ttl=3600)
+def get_tmdb_discover_by_genre(genre_id: str, api_key: str, media_type: str, limit: int = 15):
+    url = f"https://api.themoviedb.org/3/discover/{media_type}"
+    params = {
+        'api_key': api_key, 'language': 'tr-TR', 'with_genres': genre_id,
+        'without_genres': '16' if '10759' in genre_id or '28' in genre_id else '',
+        'sort_by': 'vote_average.desc', 'vote_count.gte': 500, 'page': 1
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=5)
+        if resp.status_code == 200:
+            return resp.json().get('results', [])[:limit]
+    except requests.RequestException:
+        pass
+    return []
+
+
+@st.cache_data(ttl=3600)
+def get_tmdb_recommendations(imdb_id: str, api_key: str, media_type: str = 'movie', limit: int = 15):
     find_url = f"https://api.themoviedb.org/3/find/{imdb_id}"
     find_params = {'api_key': api_key, 'external_source': 'imdb_id', 'language': 'tr-TR'}
-    
     try:
         resp = requests.get(find_url, params=find_params, timeout=5)
-        resp.raise_for_status()
         data = resp.json()
-        
-        movie_results = data.get('movie_results', [])
-        if not movie_results:
+        results = data.get('movie_results', []) if media_type == 'movie' else data.get('tv_results', [])
+        if not results:
             return None
-            
-        tmdb_id = movie_results[0]['id']
-        
-        # 2. Bulunan TMDb ID ile önerileri çekme (Türlere değil, hikayeye bakar)
-        rec_url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/recommendations"
-        rec_params = {'api_key': api_key, 'language': 'tr-TR'}
-        
-        rec_resp = requests.get(rec_url, params=rec_params, timeout=5)
-        rec_resp.raise_for_status()
-        rec_data = rec_resp.json()
-        
-        return rec_data.get('results', [])[:limit]
-        
-    except Exception as e:
-        print(f"TMDb API Hatası: {e}")
-        return None
-
-# --- BAŞLANGIÇ YÜKLEMESİ ---
-print("\n--- SİSTEM BAŞLATILIYOR ---")
-df = load_imdb_data()
-print(f"Toplam {len(df)} film hazır! (RAM dostu sürüm)\n" + "="*50)
-
-if __name__ == '__main__':
-    # Eğer ortam değişkenlerinde yoksa, API Key'inizi doğrudan aşağıya yapıştırabilirsiniz.
-    TMDB_API_KEY = "10e5fa6138c11560285b0c8af67e1376"
+        tmdb_id = results[0]['id']
+        rec_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/recommendations"
+        rec_resp = requests.get(rec_url, params={'api_key': api_key, 'language': 'tr-TR'}, timeout=5)
+        if rec_resp.status_code == 200:
+            return rec_resp.json().get('results', [])[:limit]
+    except requests.RequestException:
+        pass
+    return None
 
 
-    try:
-        watched = input('Hangi filmi izlediniz? (Başlık girin): ').strip()
+@st.cache_data(ttl=0)  # kasıtlı: her seferinde farklı bir öneri gelsin diye önbelleklenmiyor
+def get_random_recommendation(genre_id: str, media_type: str, api_key: str):
+    url = f"https://api.themoviedb.org/3/discover/{media_type}"
+    base_params = {
+        'api_key': api_key, 'with_genres': genre_id, 'language': 'tr-TR',
+        'sort_by': 'vote_average.desc', 'include_adult': 'false', 'without_genres': '99',
+    }
+    quality_tiers = [(6.8, 600), (6.5, 250), (6.2, 80), (6.0, 30)]
+    for min_rating, min_votes in quality_tiers:
+        params = {**base_params, 'vote_average.gte': min_rating, 'vote_count.gte': min_votes}
+        try:
+            first = requests.get(url, params={**params, 'page': 1}, timeout=5).json()
+            total_pages = first.get('total_pages', 0)
+            if not total_pages:
+                continue
+            random_page = random.randint(1, min(total_pages, 12))
+            resp = requests.get(url, params={**params, 'page': random_page}, timeout=5).json()
+            results = [i for i in resp.get('results', []) if i.get('poster_path') and i.get('overview')]
+            if results:
+                return random.choice(results)
+        except requests.RequestException:
+            continue
+    return None
 
-        matched_idx = None
-        matched_title = None
 
-        # 1. Aşama: Yerel IMDb veritabanında arama
-        titles_lower = df['primaryTitle'].str.lower()
-        exact_matches = df[titles_lower == watched.lower()]
-        
-        if not exact_matches.empty:
-            best_match = exact_matches.sort_values(by='numVotes', ascending=False).iloc[0]
-            matched_idx = best_match.name
-            matched_title = best_match['primaryTitle']
-            matched_imdb_id = best_match['tconst']
-            print(f"\nTam eşleşme bulundu: {matched_title} ({best_match['startYear']})")
+def render_hero_poster(poster_url, trailer_key):
+    tpl = """
+    <!DOCTYPE html><html><head><style>
+    body { margin:0; padding:0; background:transparent; overflow:hidden; font-family:'Montserrat',sans-serif; }
+    .hero-poster {
+        position:relative; width:280px; height:400px; border-radius:10px; overflow:hidden;
+        cursor:pointer; background:#111; margin: 0 auto;
+    }
+    .hero-img { width:100%; height:100%; object-fit:cover; display:block; transition: opacity .2s; }
+    /* Siyah arka planı kaldırdık ki başlangıçta afişi kapatmasın */
+    .hero-video-box { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+    /* Sadece video oynarken aktif olacak sınıf */
+    .hero-video-box.active { pointer-events:auto; background:black; }
+    .hero-video-box iframe { width:100%; height:100%; border:0; }
+    </style></head><body>
+
+    <div class="hero-poster" id="heroPoster">
+        <img src="__POSTER_URL__" class="hero-img" id="heroImg">
+        <div class="hero-video-box" id="heroVideoBox"></div>
+    </div>
+
+    <script>
+    var poster = document.getElementById('heroPoster');
+    var img = document.getElementById('heroImg');
+    var box = document.getElementById('heroVideoBox');
+    var trailerKey = "__TRAILER_KEY__";
+    var isPlaying = false;
+
+    poster.addEventListener('click', function() {
+        if (!trailerKey) return; // Fragman yoksa hiçbir şey yapma
+
+        if (!isPlaying) {
+            // Tıklandığında video kutusunu aktif et, videoyu ekle ve afişi gizle
+            box.classList.add('active');
+            box.innerHTML = '<iframe src="https://www.youtube.com/embed/' + trailerKey +
+                '?autoplay=1&controls=1&modestbranding=1&playsinline=1" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+            img.style.opacity = '0';
+            isPlaying = true;
+        } else {
+            // Tekrar tıklanırsa videoyu kapat, afişi geri getir
+            box.classList.remove('active');
+            box.innerHTML = '';
+            img.style.opacity = '1';
+            isPlaying = false;
+        }
+    });
+    </script>
+    </body></html>
+    """
+
+    html_out = (tpl.replace("__POSTER_URL__", poster_url)
+                   .replace("__TRAILER_KEY__", trailer_key or ""))
+
+    components.html(html_out, height=420, scrolling=False)
+
+
+def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, poster_path, is_logged_in, is_fav):
+    # İZLE ve IMDb linkleri harici sitelere gittiği için (target="_blank")
+    # bunlarda sorun yok, session state'i etkilemiyorlar.
+    st.markdown(f"""
+    <div class="hero-actions">
+      <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">İZLE</a>
+      <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="hero-btn">IMDb</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Favori butonu gerçek bir Streamlit butonu (bu fonksiyon iframe içinde değil,
+    # doğrudan ana sayfada render ediliyor, o yüzden Python'a direkt erişebiliyoruz).
+    # Böylece sayfa tam yenilenmiyor, session_state (giriş bilgisi) korunuyor.
+    if is_logged_in:
+        fcol, _ = st.columns([1, 3])
+        with fcol:
+            if is_fav:
+                if st.button("Favoriden Çıkar", key=f"fav_remove_{tmdb_id}_{m_type}", type="primary", use_container_width=True):
+                    remove_favorite(st.session_state.username, tmdb_id, m_type)
+                    st.toast("Favorilerden çıkarıldı!")
+                    st.rerun()
+            else:
+                if st.button("Favoriye Ekle", key=f"fav_add_{tmdb_id}_{m_type}", type="primary", use_container_width=True):
+                    add_favorite(st.session_state.username, tmdb_id, real_title, m_type, poster_path)
+                    st.toast("Favorilere eklendi!")
+                    st.rerun()
+    else:
+        st.caption("Favorilere eklemek için giriş yapmalısınız.")
+
+
+def render_scrollable_strip(title: str, items: list):
+    if not items:
+        return
+    container_id = "scroll_" + re.sub(r'[^a-zA-Z0-9]', '', title)
+    safe_title = html.escape(title)
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap');
+    body {{ margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; background: transparent; overflow: hidden; }}
+    .header {{ display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 15px; padding: 10px 15px; background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+    .header h3 {{ margin: 0; font-size: 1.2rem; font-weight: 700; color: #141414; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+    .nav-buttons {{ display: flex; gap: 6px; }}
+    .nav-btn {{ background: rgba(255,255,255,0.06); border: 1px solid rgba(0,0,0,0.08); color: #141414; width: 32px; height: 26px; border-radius: 6px; cursor: pointer; transition: 0.25s; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }}
+    .nav-btn:hover {{ background: #E50914; color: #ffffff; border-color: #E50914; }}
+    .scroll-container {{ display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; scrollbar-width: none; }}
+    .scroll-container::-webkit-scrollbar {{ display: none; }}
+    .movie-card {{ flex: 0 0 140px; width: 140px; display: flex; flex-direction: column; }}
+    .poster-box {{ position: relative; width: 100%; height: 210px; border-radius: 6px; overflow: hidden; cursor: pointer; }}
+    .poster-img {{ width: 100%; height: 100%; object-fit: cover; transition: 0.3s; }}
+    .hover-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; opacity: 0; pointer-events: none; transition: 0.3s; }}
+    .show-overlay {{ opacity: 1 !important; pointer-events: auto !important; }}
+    .action-btn {{ padding: 6px 10px; border-radius: 4px; text-decoration: none !important; font-size: 0.7rem; font-weight: bold; width: 85%; text-align: center; box-sizing: border-box; cursor: pointer; }}
+    .btn-red {{ background: #E50914; color: white !important; }}
+    .btn-dark {{ background: transparent; border: 1px solid white; color: white !important; }}
+    </style>
+    </head>
+    <body>
+    <div class="header">
+    <h3>{safe_title}</h3>
+    <div style="display:flex; gap:8px;">
+    <button class="nav-btn" onclick="document.getElementById('{container_id}').scrollBy({{left: -300, behavior: 'smooth'}})">❮</button>
+    <button class="nav-btn" onclick="document.getElementById('{container_id}').scrollBy({{left: 300, behavior: 'smooth'}})">❯</button>
+    </div>
+    </div>
+    <div id="{container_id}" class="scroll-container">
+    """
+
+    for row in items:
+        baslik = row.get('title') or row.get('name')
+        poster_path = row.get('poster_path')
+        tmdb_id = row.get('id')
+        if not poster_path or not tmdb_id:
+            continue
+
+        safe_baslik = urllib.parse.quote(baslik)
+        watch_link = f"https://www.justwatch.com/tr/ara?q={safe_baslik}"
+        m_type_guess = 'movie' if 'title' in row else 'tv'
+        imdb_id = get_imdb_id(tmdb_id, m_type_guess)
+        imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_baslik}"
+        image_url = f"https://image.tmdb.org/t/p/w300{poster_path}"
+
+        html_content += f"""
+        <div class="movie-card">
+        <div class="poster-box" onclick="this.querySelector('.hover-overlay').classList.toggle('show-overlay')">
+        <img src="{image_url}" class="poster-img">
+        <div class="hover-overlay">
+        <a href="{watch_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-red">İZLE</a>
+        <a href="{imdb_link}" target="_blank" rel="noopener noreferrer" class="action-btn btn-dark">IMDB</a>
+        </div>
+        </div>
+        </div>
+        """
+
+    html_content += "</div></body></html>"
+    components.html(html_content, height=330, scrolling=False)
+
+
+    if st.session_state.logged_in:
+        valid_items = []
+        for row in items:
+            baslik = row.get('title') or row.get('name')
+            poster_path = row.get('poster_path')
+            tmdb_id = row.get('id')
+            if not poster_path or not tmdb_id:
+                continue
+            m_type_guess = 'movie' if 'title' in row else 'tv'
+            valid_items.append((tmdb_id, baslik, m_type_guess, poster_path))
+
+        if valid_items:
+            with st.expander(f"'{safe_title}' listesinden favorilere ekle / çıkar", expanded=False):
+                cols = st.columns(5)
+                for i, (tmdb_id, baslik, m_type_guess, poster_path) in enumerate(valid_items):
+                    is_fav_now = (str(tmdb_id), m_type_guess) in user_favs_set
+                    with cols[i % 5]:
+                        st.caption(baslik[:22] + ("…" if len(baslik) > 22 else ""))
+                        btn_label = "Çıkar" if is_fav_now else "Ekle"
+                        btn_type = "primary" if is_fav_now else "secondary"
+                        if st.button(btn_label, key=f"togglefav_{container_id}_{tmdb_id}_{m_type_guess}",
+                                     use_container_width=True, type=btn_type):
+                            if is_fav_now:
+                                remove_favorite(st.session_state.username, tmdb_id, m_type_guess)
+                                st.toast("Favorilerden çıkarıldı!")
+                            else:
+                                add_favorite(st.session_state.username, tmdb_id, baslik, m_type_guess, poster_path)
+                                st.toast("Favorilere eklendi!")
+                            st.rerun()
+
+
+logo_svg = """
+<svg width="340" height="60" viewBox="0 0 340 60" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="glowRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff3366" />
+      <stop offset="50%" stop-color="#E50914" />
+      <stop offset="100%" stop-color="#8a0000" />
+    </linearGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#E50914" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <path d="M 12 44 L 12 18 L 30 44 L 30 18" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 30 26 L 38 44 L 46 26 L 54 44 L 62 18" fill="none" stroke="url(#glowRed)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)"/>
+  <polygon points="42,15 42,23 49,19" fill="#ffffff" />
+  <text x="76" y="38" font-family="'Montserrat', sans-serif" font-size="28" font-weight="900" fill="#ffffff" letter-spacing="-0.5">
+    Next<tspan fill="#E50914">Watch</tspan>
+  </text>
+</svg>
+"""
+
+st.markdown(f'<div style="margin-bottom: -5px;">{logo_svg}</div>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Find something to watch, discover the best recommendations based on story and atmosphere.</p>', unsafe_allow_html=True)
+
+if "secim" not in st.session_state:
+    st.session_state.secim = "Film"
+
+st.markdown('<div class="top-menu-row">', unsafe_allow_html=True)
+menu_items = ["Film", "Dizi", "Belgesel", "Ne İzlesem?", "Favorilerim"]
+menu_cols = st.columns(len(menu_items))
+for col, item in zip(menu_cols, menu_items):
+    with col:
+        if st.button(item, key=f"menu_{item}", use_container_width=True,
+                     type="primary" if st.session_state.secim == item else "secondary"):
+            st.session_state.secim = item
+            st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
+
+secim = st.session_state.secim
+media_type = 'tv' if secim == "Dizi" else 'movie'
+
+if secim == "Favorilerim":
+    st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
+    if not st.session_state.logged_in:
+        st.info("Kendi favori listenizi oluşturmak ve işlem yapmak için sağ üstten giriş yapmalısınız.")
+    else:
+        st.caption(f"Toplam {get_favorite_count(st.session_state.username)} favori — istediğiniz kadar ekleyebilirsiniz, sınır yoktur.")
+        st.markdown("### Hızlı Favori Ekle")
+        # Favoriler sekmesi içine özel arama çubuğu
+        fav_search = st.text_input("Listeye eklemek istediğiniz filmi veya diziyi arayın...", key="fav_search_input").strip()
+
+        if fav_search:
+            # Sadece favoriler sayfasında arama yapar
+            search_results = get_tmdb_search(fav_search, TMDB_API_KEY, "multi")
+            filtered_results = [i for i in search_results if i.get('poster_path')][:5] # En iyi 5 sonucu gösterir
+
+            if filtered_results:
+                for item in filtered_results:
+                    baslik = item.get('title') or item.get('name')
+                    tmdb_id = item.get('id')
+                    m_type = 'movie' if 'title' in item else 'tv'
+                    poster = item.get('poster_path')
+                    yil = (item.get('release_date') or item.get('first_air_date') or 'Bilinmiyor')[:4]
+
+                    # Her sonuç için yan yana isim ve buton gösterimi
+                    col_info, col_btn = st.columns([4, 1])
+                    with col_info:
+                        st.write(f"**{baslik}** ({yil})")
+                    with col_btn:
+                        is_already_fav = (str(tmdb_id), m_type) in user_favs_set
+                        if is_already_fav:
+                            st.button("Eklendi", disabled=True, key=f"quick_added_{tmdb_id}_{m_type}")
+                        else:
+                            if st.button("EKLE", key=f"quick_add_{tmdb_id}_{m_type}", type="primary"):
+                                add_favorite(st.session_state.username, tmdb_id, baslik, m_type, poster)
+                                st.toast(f"{baslik} başarıyla eklendi!")
+                                st.rerun() # Sayfayı anında yenileyip listeye yansıtır
+            else:
+                st.warning("Sonuç bulunamadı.")
+
+        st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
+        st.markdown("### Listeniz")
+
+        fav_data = get_favorites(st.session_state.username)
+        if not fav_data:
+            st.info("Listeniz şu an boş. Yukarıdan arama yaparak eklemeye başlayabilirsiniz!")
         else:
-            print("\nBirebir eşleşme bulunamadı, bilinen filmler içinde aranıyor...")
-            popular_df = df[df['numVotes'] > 1000]
-            titles = popular_df['primaryTitle'].tolist()
-            
-            matches = difflib.get_close_matches(watched, titles, n=5, cutoff=0.6)
-            if matches:
-                print('\nYakın başlıklar bulundu, lütfen seçim yapın:')
-                for i, t in enumerate(matches, 1):
-                    match_info = popular_df[popular_df['primaryTitle'] == t].iloc[0]
-                    print(f"{i}. {t} ({match_info['startYear']})")
-                sel = input('Seçiminiz (numara girin veya iptal için Enter): ').strip()
-                if sel.isdigit() and 1 <= int(sel) <= len(matches):
-                    chosen_title = matches[int(sel) - 1]
+            # ÖNEMLİ: 'title' anahtarını her zaman eklemek, render_scrollable_strip
+            # içindeki tür tahminini (m_type_guess = 'movie' if 'title' in row else 'tv')
+            # bozuyordu — diziler bile 'film' sanılıyordu. Bu da, film ve dizi
+            # kimliklerinin (TMDB'de ayrı sayıldığı için) çakışması durumunda aynı
+            # widget key'inin iki kez üretilmesine (StreamlitDuplicateElementKey) yol
+            # açıyordu. Artık her öğeye SADECE gerçek türüne uygun anahtar ekleniyor.
+            fav_items = []
+            for row in fav_data:
+                fav_tmdb_id, fav_title, fav_mtype, fav_poster = row
+                fav_item = {"id": fav_tmdb_id, "poster_path": fav_poster}
+                if fav_mtype == 'movie':
+                    fav_item["title"] = fav_title
+                else:
+                    fav_item["name"] = fav_title
+                fav_items.append(fav_item)
+            render_scrollable_strip(f"{st.session_state.username} adlı kullanıcının Favorileri", fav_items)
+
+elif secim == "Ne İzlesem?":
+    st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
+    st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
+
+    if "tur_tipi" not in st.session_state:
+        st.session_state.tur_tipi = "Film"
+    # Öneri sonucu, sayfa yeniden çizildiğinde (örn. favori butonuna basılınca
+    # tetiklenen st.rerun() sırasında) kaybolmasın diye session_state'te tutulur.
+    if "ne_izlesem_sonuc" not in st.session_state:
+        st.session_state.ne_izlesem_sonuc = None
+    if "ne_izlesem_denendi" not in st.session_state:
+        st.session_state.ne_izlesem_denendi = False
+
+    st.markdown("<p style='color:#8c8c8c; font-weight:600; font-size:0.85rem; text-transform:uppercase;'>Format</p>", unsafe_allow_html=True)
+
+    fcol1, fcol2, _spacer = st.columns([1, 1, 4])
+    with fcol1:
+        if st.button("Film", key="format_film", use_container_width=True,
+                     type="primary" if st.session_state.tur_tipi == "Film" else "secondary"):
+            st.session_state.tur_tipi = "Film"
+            st.rerun()
+    with fcol2:
+        if st.button("Dizi", key="format_dizi", use_container_width=True,
+                     type="primary" if st.session_state.tur_tipi == "Dizi" else "secondary"):
+            st.session_state.tur_tipi = "Dizi"
+            st.rerun()
+
+    tur_tipi = st.session_state.tur_tipi
+    m_type = "movie" if tur_tipi == "Film" else "tv"
+
+    genres = get_tmdb_genres(TMDB_API_KEY, m_type)
+    genre_dict = {g['name']: str(g['id']) for g in genres}
+
+    if not genre_dict:
+        st.warning("Tür listesi şu anda yüklenemedi. Lütfen daha sonra tekrar deneyin.")
+    else:
+        selected_genre_name = st.selectbox("Tür Tercihiniz:", list(genre_dict.keys()))
+
+        if st.button("ÖNERİ GETİR", use_container_width=True, type="primary"):
+            with st.spinner("Arşiv taranıyor..."):
+                st.session_state.ne_izlesem_sonuc = get_random_recommendation(
+                    genre_dict[selected_genre_name], m_type, TMDB_API_KEY
+                )
+            st.session_state.ne_izlesem_denendi = True
+
+        chosen = st.session_state.ne_izlesem_sonuc
+
+        if chosen:
+            st.markdown("<hr style='border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+            baslik = chosen.get('title') or chosen.get('name')
+            ozet = chosen.get('overview') or 'Bu yapım için özet bulunmamaktadır.'
+            puan = round(chosen.get('vote_average', 0), 1)
+            yil = (chosen.get('release_date') or chosen.get('first_air_date') or '?')[:4]
+            poster_url = f"https://image.tmdb.org/t/p/w500{chosen.get('poster_path')}"
+            tmdb_id = chosen.get('id')
+            imdb_id = get_imdb_id(tmdb_id, m_type)
+
+            safe_b = urllib.parse.quote(baslik)
+            watch_link = f"https://www.justwatch.com/tr/ara?q={safe_b}"
+            imdb_link = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else f"https://www.imdb.com/find?q={safe_b}"
+            trailer_key = get_tmdb_trailer_key(tmdb_id, m_type)
+
+            col1, col2 = st.columns([1, 2.5])
+            with col1:
+                render_hero_poster(poster_url, trailer_key)
+            with col2:
+                st.markdown(f"<h1 style='font-weight:700;'>{baslik} ({yil})</h1>", unsafe_allow_html=True)
+                st.markdown(f"**TMDb Puanı:** `{puan} / 10`")
+                st.markdown(f"<p style='line-height:1.6; color:#a0aec0;'>{ozet}</p>", unsafe_allow_html=True)
+
+                render_hero_actions(
+                    watch_link, imdb_link, tmdb_id, baslik, m_type, chosen.get('poster_path'),
+                    st.session_state.logged_in, (str(tmdb_id), m_type) in user_favs_set
+                )
+        elif st.session_state.ne_izlesem_denendi:
+            st.error("Kriterlerinize uygun bir yapım bulunamadı.")
+
+else:
+    search_query = st.text_input("Arama", placeholder="Ne izlemek istiyorsunuz? (Örn. Matrix)").strip()
+
+    if search_query:
+        st.markdown(f"### '{search_query}' İçin Arama Sonuçları")
+        search_type = 'movie' if secim in ["Film", "Belgesel"] else 'tv'
+        search_results = get_tmdb_search(search_query, TMDB_API_KEY, search_type)
+        filtered_search = [i for i in search_results if i.get('poster_path')]
+
+        if filtered_search:
+            render_scrollable_strip("Sonuçlar", filtered_search)
+        else:
+            st.warning("Maalesef aradığınız kriterlere uygun bir sonuç bulunamadı.")
+
+        df_all = load_imdb_data()
+        matched_imdb_id = None
+        if not df_all.empty:
+            if secim == "Film":
+                df = df_all[(df_all['type'] == 'movie') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
+            elif secim == "Dizi":
+                df = df_all[(df_all['type'] == 'tv') & (~df_all['genres'].str.contains('Documentary', case=False, na=False))]
+            else:
+                df = df_all[df_all['genres'].str.contains('Documentary', case=False, na=False)]
+
+            titles_lower = df['primaryTitle'].str.lower()
+            exact_matches = df[titles_lower == search_query.lower()]
+
+            if not exact_matches.empty:
+                best_match = exact_matches.sort_values(by='numVotes', ascending=False).iloc[0]
+                matched_title = best_match['primaryTitle']
+                matched_imdb_id = best_match['tconst']
+            else:
+                popular_df = df[df['numVotes'] > 1000]
+                titles = popular_df['primaryTitle'].tolist()
+                matches = difflib.get_close_matches(search_query, titles, n=1, cutoff=0.6)
+                if matches:
+                    chosen_title = matches[0]
                     best_match = df[df['primaryTitle'] == chosen_title].sort_values(by='numVotes', ascending=False).iloc[0]
-                    matched_idx = best_match.name
                     matched_title = best_match['primaryTitle']
                     matched_imdb_id = best_match['tconst']
-            else:
-                print('Girilen başlığa yakın bilindik bir film bulunamadı.')
+                    st.info(f"Şunu mu demek istediniz: **{matched_title}** ({best_match['startYear']})")
 
-        # 2. Aşama: Filmi bulduysak, IMDb ID'si ile TMDb API üzerinden öneri çek
-        if matched_idx is not None:
-            print("\nTMDb Yapay Zekası üzerinden içerik bazlı öneriler çekiliyor...")
-            oneriler = get_tmdb_recommendations(matched_imdb_id, TMDB_API_KEY, limit=5)
-            
+        if matched_imdb_id:
+            st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
+            oneriler = get_tmdb_recommendations(matched_imdb_id, TMDB_API_KEY, media_type, limit=15)
             if oneriler:
-                print(f"\n'{matched_title}' filminin HİKAYESİNİ sevenler için en iyi öneriler:\n")
-                for i, row in enumerate(oneriler, 1):
-                    o_baslik = row.get('title')
-                    o_yil = row.get('release_date', '?')[:4]
-                    o_puan = round(row.get('vote_average', 0), 1)
-                    o_ozet = row.get('overview', 'Özet bulunmuyor.').replace('\n', ' ')
-                    
-                    if len(o_ozet) > 130:
-                        o_ozet = o_ozet[:130] + "..."
-                        
-                    print(f"{i}. {o_baslik} ({o_yil}) | Puan: {o_puan}/10")
-                    print(f"   Konu: {o_ozet}\n")
-            else:
-                print("\nBu film için TMDb üzerinde yeterli öneri verisi bulunamadı.")
-        else:
-            print('\nEşleşen film bulunamadığı için işlem iptal edildi.')
+                render_scrollable_strip(f"'{matched_title}' Sevenler İçin Öneriler", oneriler)
 
-    except KeyboardInterrupt:
-        print("\nProgramdan çıkıldı.")
+    else:
+        st.markdown("<hr style='border-color: transparent;'>", unsafe_allow_html=True)
+        # NOT: Streamlit her etkileşimde tüm scripti baştan çalıştırır; ekranda görünen
+        # hiçbir şey otomatik olarak "hatırlanmaz". Bu yüzden içerik burada HER SEFERİNDE
+        # yeniden çiziliyor (yalnızca ilk sekme değişiminde değil) — aksi halde aynı
+        # sekmeye tekrar dönüldüğünde sayfa boş görünüyordu. Alttaki veri çekme
+        # fonksiyonları zaten @st.cache_data ile önbelleklendiği için bu ekstra bir
+        # performans maliyeti getirmez (tekrar API çağrısı yapmaz).
+        st.session_state.last_selection = secim
+
+        if secim == "Belgesel":
+            with st.spinner("Belgeseller yükleniyor..."):
+                populer = get_tmdb_discover_by_genre("99", TMDB_API_KEY, 'movie', limit=15)
+                render_scrollable_strip("En Popüler Belgeseller", populer)
+                tarih = get_tmdb_discover_by_genre("99,36", TMDB_API_KEY, 'movie', limit=15)
+                render_scrollable_strip("Tarih Belgeselleri", tarih)
+                doga = get_tmdb_discover_by_genre("99", TMDB_API_KEY, 'movie', limit=25)
+                doga = [d for d in doga if any(x in (d.get('title') or '').lower() for x in ['nature', 'wild', 'ocean', 'earth'])]
+                render_scrollable_strip("Doğa ve Vahşi Yaşam", doga)
+        else:
+            with st.spinner("Kategoriler Yükleniyor..."):
+                genres = get_tmdb_genres(TMDB_API_KEY, media_type)
+                genres = [g for g in genres if g['id'] != 99]
+                for genre in genres:
+                    genre_id = str(genre['id'])
+                    genre_name = genre['name']
+                    category_items = get_tmdb_discover_by_genre(genre_id, TMDB_API_KEY, media_type, limit=15)
+                    render_scrollable_strip(f"En İyi {genre_name} Yapımları", category_items)
