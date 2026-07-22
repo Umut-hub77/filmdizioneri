@@ -16,9 +16,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from PIL import Image, UnidentifiedImageError
 
-# ==========================================
-# SAYFA AYARLARI
-# ==========================================
+
 try:
     _page_icon = Image.open("icon.png")
 except Exception:
@@ -26,19 +24,13 @@ except Exception:
 
 st.set_page_config(page_title="NextWatch", page_icon=_page_icon, layout="wide")
 
-# GÜVENLİK NOTU: API anahtarını kaynak kodun içine gömmek yerine
-# .streamlit/secrets.toml dosyasına koyup st.secrets ile okuyun.
-# Örnek secrets.toml içeriği: TMDB_API_KEY = "xxxx"
-# Böylece repo public olsa bile anahtar sızmaz.
+
 TMDB_API_KEY = st.secrets.get("TMDB_API_KEY", "10e5fa6138c11560285b0c8af67e1376")
 DB_PATH = "nextwatch.db"
 MIN_PASSWORD_LEN = 6
 MAX_AVATAR_UPLOAD_MB = 8
 AVATAR_MAX_DIMENSION = 512
 
-# ==========================================
-# VERİTABANI KATMANI (SQLite)
-# ==========================================
 @contextmanager
 def get_db():
     """Tüm DB işlemleri için tek noktadan bağlantı yönetimi.
@@ -63,12 +55,11 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS favorites
                      (username TEXT, tmdb_id TEXT, title TEXT, media_type TEXT, poster_path TEXT,
                       UNIQUE(username, tmdb_id, media_type))''')
-        # Eski veritabanlarında olmayan sütunları ekle (migration)
         for col_def in ["profile_pic TEXT", "created_at TEXT", "bio TEXT"]:
             try:
                 c.execute(f'ALTER TABLE users ADD COLUMN {col_def}')
             except sqlite3.OperationalError:
-                pass  # sütun zaten var
+                pass  
 
     _migrate_favorites_unique_constraint()
 
@@ -87,7 +78,7 @@ def _migrate_favorites_unique_constraint():
             return
         normalized = row[0].replace(" ", "").replace("\n", "").upper()
         if "UNIQUE(USERNAME,TMDB_ID,MEDIA_TYPE)" in normalized:
-            return  # zaten güncel şema
+            return  
 
         conn.execute("ALTER TABLE favorites RENAME TO favorites_old_migration")
         conn.execute('''CREATE TABLE favorites
@@ -117,7 +108,6 @@ def check_hashes(password: str, stored: str) -> bool:
         salt, _ = stored.split("$", 1)
         candidate = make_hashes(password, salt)
         return secrets.compare_digest(candidate, stored)
-    # Eski format (salt'sız sha256) - yeni kullanıcı adı taşınmış eski veritabanları için
     legacy = hashlib.sha256(password.encode('utf-8')).hexdigest()
     return secrets.compare_digest(legacy, stored)
 
@@ -166,7 +156,6 @@ def login_user(username: str, password: str) -> bool:
     if not row or not check_hashes(password, row[0]):
         return False
     if "$" not in row[0]:
-        # Eski (salt'sız) parola özetini artık daha güvenli salt'lı formata sessizce yükselt
         with get_db() as conn:
             conn.execute('UPDATE users SET password=? WHERE username=?', (make_hashes(password), username))
     return True
@@ -209,8 +198,7 @@ def process_avatar_upload(uploaded_file) -> tuple[bool, str]:
 
     try:
         img = Image.open(io.BytesIO(raw_bytes))
-        img.verify()  # dosyanın bozuk olup olmadığını kontrol et
-        # verify() sonrası akışı yeniden açmak gerekir
+        img.verify()  
         img = Image.open(io.BytesIO(raw_bytes))
         img = img.convert("RGB")
     except (UnidentifiedImageError, OSError, ValueError):
@@ -239,7 +227,7 @@ def add_favorite(username, tmdb_id, title, media_type, poster_path):
             conn.execute('INSERT INTO favorites VALUES (?, ?, ?, ?, ?)',
                          (username, str(tmdb_id), title, media_type, poster_path))
     except sqlite3.IntegrityError:
-        pass  # Zaten favorilerde
+        pass 
 
 
 def remove_favorite(username, tmdb_id, media_type=None):
@@ -265,23 +253,16 @@ def get_favorite_count(username):
     return row[0] if row else 0
 
 
-# ==========================================
-# OTURUM YÖNETİMİ
-# ==========================================
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
 
 user_favs_set = set()
 if st.session_state.logged_in:
-    # (tmdb_id, media_type) çiftlerinden oluşan set — aynı ID'nin farklı türde
-    # (film/dizi) ayrı ayrı favorilenebilmesi için media_type'ı da dahil ediyoruz.
+
     user_favs_set = {(row[0], row[2]) for row in get_favorites(st.session_state.username)}
 
-
-# ==========================================
-# STİL
-# ==========================================
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;600;700;900&display=swap');
@@ -450,11 +431,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-border"] {
 """, unsafe_allow_html=True)
 
 
-# ==========================================
-# SAĞ ÜST PROFİL / GİRİŞ ROZETİ
-# ==========================================
 def render_profile_corner():
-    # Profil fotoğrafı varsa, popover tetikleyici butonunun arka planına basıyoruz
     if st.session_state.logged_in:
         pic = get_profile_pic(st.session_state.username)
         if pic:
@@ -546,7 +523,6 @@ def render_profile_corner():
 
             tab1, tab2, tab3, tab4 = st.tabs(["Profil", "Favoriler", "Ayarlar", "Çıkış"])
 
-            # --- PROFİL FOTOĞRAFI & BİYOGRAFİ ---
             with tab1:
                 uploaded = st.file_uploader(
                     "Profil fotoğrafını güncelle", type=["png", "jpg", "jpeg"], key="pfp_upload",
@@ -567,7 +543,6 @@ def render_profile_corner():
                     st.toast("Bio güncellendi!")
                     st.rerun()
 
-            # --- FAVORİLER ÖNİZLEME ---
             with tab2:
                 fav_rows = get_favorites(username)
                 if not fav_rows:
@@ -589,7 +564,6 @@ def render_profile_corner():
                     if len(fav_rows) > 8:
                         st.caption(f"+{len(fav_rows) - 8} favori daha var. Tümü için **Favorilerim** sekmesine gidin.")
 
-            # --- ŞİFRE DEĞİŞTİRME ---
             with tab3:
                 st.markdown("##### Şifre Değiştir")
                 old_pw = st.text_input("Mevcut Şifre", type="password", key="old_pw_corner")
@@ -607,7 +581,6 @@ def render_profile_corner():
                         else:
                             st.error(msg)
 
-            # --- ÇIKIŞ ---
             with tab4:
                 st.caption("Hesabınızdan çıkış yapmak üzeresiniz.")
                 if st.button("Çıkış Yap", key="logout_corner", type="primary", use_container_width=True):
@@ -619,9 +592,6 @@ def render_profile_corner():
 render_profile_corner()
 
 
-# ==========================================
-# TMDB VERİ ÇEKME FONKSİYONLARI
-# ==========================================
 @st.cache_data
 def load_imdb_data():
     try:
@@ -845,9 +815,6 @@ def render_hero_actions(watch_link, imdb_link, tmdb_id, real_title, m_type, post
         st.caption("Favorilere eklemek için giriş yapmalısınız.")
 
 
-# ==========================================
-# KAYDIRILABİLİR LİSTE RENDER FONKSİYONU
-# ==========================================
 def render_scrollable_strip(title: str, items: list):
     if not items:
         return
@@ -918,10 +885,7 @@ def render_scrollable_strip(title: str, items: list):
     html_content += "</div></body></html>"
     components.html(html_content, height=330, scrolling=False)
 
-    # --- Favori yönetimi: gerçek Streamlit butonları, iframe DIŞINDA ---
-    # Sınırsız favori: her öğe kendi bağımsız butonuna sahip, hiçbir toplu
-    # senkronizasyon / multiselect state'i kullanılmıyor. Bu yüzden istediğiniz
-    # kadar filmi/diziyi favoriye ekleyip çıkarabilirsiniz.
+
     if st.session_state.logged_in:
         valid_items = []
         for row in items:
@@ -953,9 +917,6 @@ def render_scrollable_strip(title: str, items: list):
                             st.rerun()
 
 
-# ==========================================
-# ANA ARAYÜZ
-# ==========================================
 logo_svg = """
 <svg width="340" height="60" viewBox="0 0 340 60" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -997,7 +958,6 @@ st.markdown('</div>', unsafe_allow_html=True)
 secim = st.session_state.secim
 media_type = 'tv' if secim == "Dizi" else 'movie'
 
-# --- FAVORİLERİM SEKMESİ ---
 if secim == "Favorilerim":
     st.markdown("<h2 style='font-weight: 700;'>FAVORİLERİM</h2>", unsafe_allow_html=True)
     if not st.session_state.logged_in:
@@ -1040,7 +1000,6 @@ if secim == "Favorilerim":
         st.markdown("<hr style='border-color: rgba(255,255,255,0.1); margin: 20px 0;'>", unsafe_allow_html=True)
         st.markdown("### Listeniz")
 
-        # Mevcut favorileri listeleme
         fav_data = get_favorites(st.session_state.username)
         if not fav_data:
             st.info("Listeniz şu an boş. Yukarıdan arama yaparak eklemeye başlayabilirsiniz!")
@@ -1050,7 +1009,6 @@ if secim == "Favorilerim":
                          for row in fav_data]
             render_scrollable_strip(f"{st.session_state.username} adlı kullanıcının Favorileri", fav_items)
 
-# --- NE İZLESEM SEKMESİ ---
 elif secim == "Ne İzlesem?":
     st.markdown("<h2 style='font-weight: 700;'>KARARSIZ MI KALDINIZ?</h2>", unsafe_allow_html=True)
     st.write("Türü seçin, arşivimizi tarayıp size yüksek puanlı bir yapım önerelim.")
@@ -1116,7 +1074,6 @@ elif secim == "Ne İzlesem?":
         else:
             st.error("Kriterlerinize uygun bir yapım bulunamadı.")
 
-# --- FİLM / DİZİ / BELGESEL KEŞİF ve ARAMA ---
 else:
     search_query = st.text_input("Arama", placeholder="Ne izlemek istiyorsunuz? (Örn. Matrix)").strip()
 
